@@ -9,7 +9,8 @@ const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
 const int MAP_WIDTH = 8;
 const int MAP_HEIGHT = 8;
-const char* SERVER_HOST = "127.0.0.1";
+// const char* SERVER_HOST = "127.0.0.1";
+const char* SERVER_HOST = "192.168.163.247";
 const int SERVER_PORT = 1234;
 
 // Define the map (1 represents walls, 0 represents empty space)
@@ -184,7 +185,7 @@ public:
 
         // Initialize players vector with default states
         players.resize(2);
-        playerID = 0;
+        playerID = 0;  // Will be set properly when connecting to server
         isRunning = true;
     }
 
@@ -203,8 +204,15 @@ public:
             while (enet_host_service(client, &event, 0) > 0) {
                 switch (event.type) {
                     case ENET_EVENT_TYPE_RECEIVE: {
-                        PositionPacket* pos = (PositionPacket*)event.packet->data;
-                        players[pos->playerID] = pos->state;
+                        if (event.packet->dataLength == sizeof(uint8_t)) {
+                            // This is the initial player ID assignment
+                            playerID = *(uint8_t*)event.packet->data;
+                            std::cout << "Assigned player ID: " << (int)playerID << std::endl;
+                        } else {
+                            // This is a position update
+                            PositionPacket* pos = (PositionPacket*)event.packet->data;
+                            players[pos->playerID] = pos->state;
+                        }
                         enet_packet_destroy(event.packet);
                         break;
                     }

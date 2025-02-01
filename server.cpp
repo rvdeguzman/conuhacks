@@ -90,8 +90,35 @@ public:
                         std::cout << "Client connected from " 
                                 << event.peer->address.host << ":" 
                                 << event.peer->address.port << std::endl;
+                        
+                        // Find first available player slot
+                        size_t newPlayerID = clients.size();
                         clients.push_back(event.peer);
-                        event.peer->data = (void*)(clients.size() - 1);
+                        event.peer->data = (void*)newPlayerID;
+
+                        // Send the player their ID
+                        uint8_t idPacket = (uint8_t)newPlayerID;
+                        ENetPacket* packet = enet_packet_create(
+                            &idPacket,
+                            sizeof(uint8_t),
+                            ENET_PACKET_FLAG_RELIABLE
+                        );
+                        enet_peer_send(event.peer, 0, packet);
+
+                        // Send initial positions of all players to the new client
+                        for (size_t i = 0; i < players.size(); i++) {
+                            PositionPacket posPacket;
+                            posPacket.playerID = i;
+                            posPacket.state = players[i];
+                            
+                            packet = enet_packet_create(
+                                &posPacket,
+                                sizeof(PositionPacket),
+                                ENET_PACKET_FLAG_RELIABLE
+                            );
+                            enet_peer_send(event.peer, 0, packet);
+                        }
+                        
                         break;
                     }
                     case ENET_EVENT_TYPE_RECEIVE: {
@@ -120,6 +147,21 @@ public:
                         std::cout << "Client disconnected" << std::endl;
                         size_t playerIndex = (size_t)event.peer->data;
                         clients[playerIndex] = nullptr;
+                        
+                        // Reset the disconnected player's position
+                        players[playerIndex] = PlayerState();
+                        
+                        // Notify other clients about the disconnection
+                        PositionPacket posPacket;
+                        posPacket.playerID = playerIndex;
+                        posPacket.state = players[playerIndex];
+                        
+                        ENetPacket* packet = enet_packet_create(
+                            &posPacket,
+                            sizeof(PositionPacket),
+                            ENET_PACKET_FLAG_RELIABLE
+                        );
+                        enet_host_broadcast(server, 0, packet);
                         break;
                     }
                     default:
