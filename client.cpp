@@ -1,4 +1,5 @@
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_timer.h>
 #include <enet/enet.h>
 #include <cmath>
 #include <vector>
@@ -25,9 +26,6 @@ const int worldMap[MAP_WIDTH][MAP_HEIGHT] = {
     {1,0,0,0,0,0,0,1},
     {1,1,1,1,1,1,1,1}
 };
-
-
-
 
 class GameClient {
 private:
@@ -116,9 +114,9 @@ private:
             }
 
             if (side == 0)
-                perpWallDist = (mapX - currentPlayer.posX + (1 - stepX) / 2) / rayDirX;
+                perpWallDist = (mapX - currentPlayer.posX + (1.0 - stepX) / 2.0) / rayDirX;
             else
-                perpWallDist = (mapY - currentPlayer.posY + (1 - stepY) / 2) / rayDirY;
+                perpWallDist = (mapY - currentPlayer.posY + (1.0 - stepY) / 2.0) / rayDirY;
 
             int lineHeight = (int)(SCREEN_HEIGHT / perpWallDist);
             int drawStart = -lineHeight / 2 + SCREEN_HEIGHT / 2;
@@ -242,7 +240,13 @@ public:
 
     void run() {
         SDL_Event e;
+        const int FPS = 60;
+        const int FRAME_DELAY = 1000 / FPS;
+        Uint32 frameStart;
+        int frameTime;
+        
         while (isRunning) {
+            frameStart = SDL_GetTicks();
             while (SDL_PollEvent(&e)) {
                 if (e.type == SDL_QUIT) {
                     isRunning = false;
@@ -277,6 +281,11 @@ public:
             }
 
             render();
+
+            frameTime = SDL_GetTicks() - frameStart;
+            if (FRAME_DELAY > frameTime) {
+                SDL_Delay(FRAME_DELAY - frameTime);
+            }
         }
     }
 
