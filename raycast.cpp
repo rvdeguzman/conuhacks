@@ -27,8 +27,8 @@ struct Player {
     double dirY = 0.0;
     double planeX = 0.0;  // Camera plane
     double planeY = 0.66;
-    double moveSpeed = 0.05;
-    double rotSpeed = 0.03;
+    const double BASE_MOVE_SPEED = 5.0;  // Units per second
+    const double BASE_ROT_SPEED = 3.0;   // Radians per second
 };
 
 int main(int argc, char* args[]) {
@@ -56,7 +56,13 @@ int main(int argc, char* args[]) {
     bool quit = false;
     SDL_Event e;
 
+    Uint32 lastFrame = SDL_GetTicks();
+    
     while (!quit) {
+        // Calculate delta time in seconds
+        Uint32 currentFrame = SDL_GetTicks();
+        double deltaTime = (currentFrame - lastFrame) / 1000.0;
+        lastFrame = currentFrame;
         // Handle events
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
@@ -66,33 +72,37 @@ int main(int argc, char* args[]) {
 
         // Handle keyboard input
         const Uint8* state = SDL_GetKeyboardState(NULL);
+        // Calculate frame-dependent movement and rotation speeds
+        double moveSpeed = player.BASE_MOVE_SPEED * deltaTime;
+        double rotSpeed = player.BASE_ROT_SPEED * deltaTime;
+
         if (state[SDL_SCANCODE_UP]) {
-            if (!worldMap[int(player.posX + player.dirX * player.moveSpeed)][int(player.posY)])
-                player.posX += player.dirX * player.moveSpeed;
-            if (!worldMap[int(player.posX)][int(player.posY + player.dirY * player.moveSpeed)])
-                player.posY += player.dirY * player.moveSpeed;
+            if (!worldMap[int(player.posX + player.dirX * moveSpeed)][int(player.posY)])
+                player.posX += player.dirX * moveSpeed;
+            if (!worldMap[int(player.posX)][int(player.posY + player.dirY * moveSpeed)])
+                player.posY += player.dirY * moveSpeed;
         }
         if (state[SDL_SCANCODE_DOWN]) {
-            if (!worldMap[int(player.posX - player.dirX * player.moveSpeed)][int(player.posY)])
-                player.posX -= player.dirX * player.moveSpeed;
-            if (!worldMap[int(player.posX)][int(player.posY - player.dirY * player.moveSpeed)])
-                player.posY -= player.dirY * player.moveSpeed;
+            if (!worldMap[int(player.posX - player.dirX * moveSpeed)][int(player.posY)])
+                player.posX -= player.dirX * moveSpeed;
+            if (!worldMap[int(player.posX)][int(player.posY - player.dirY * moveSpeed)])
+                player.posY -= player.dirY * moveSpeed;
         }
         if (state[SDL_SCANCODE_RIGHT]) {
             double oldDirX = player.dirX;
-            player.dirX = player.dirX * cos(-player.rotSpeed) - player.dirY * sin(-player.rotSpeed);
-            player.dirY = oldDirX * sin(-player.rotSpeed) + player.dirY * cos(-player.rotSpeed);
+            player.dirX = player.dirX * cos(-rotSpeed) - player.dirY * sin(-rotSpeed);
+            player.dirY = oldDirX * sin(-rotSpeed) + player.dirY * cos(-rotSpeed);
             double oldPlaneX = player.planeX;
-            player.planeX = player.planeX * cos(-player.rotSpeed) - player.planeY * sin(-player.rotSpeed);
-            player.planeY = oldPlaneX * sin(-player.rotSpeed) + player.planeY * cos(-player.rotSpeed);
+            player.planeX = player.planeX * cos(-rotSpeed) - player.planeY * sin(-rotSpeed);
+            player.planeY = oldPlaneX * sin(-rotSpeed) + player.planeY * cos(-rotSpeed);
         }
         if (state[SDL_SCANCODE_LEFT]) {
             double oldDirX = player.dirX;
-            player.dirX = player.dirX * cos(player.rotSpeed) - player.dirY * sin(player.rotSpeed);
-            player.dirY = oldDirX * sin(player.rotSpeed) + player.dirY * cos(player.rotSpeed);
+            player.dirX = player.dirX * cos(rotSpeed) - player.dirY * sin(rotSpeed);
+            player.dirY = oldDirX * sin(rotSpeed) + player.dirY * cos(rotSpeed);
             double oldPlaneX = player.planeX;
-            player.planeX = player.planeX * cos(player.rotSpeed) - player.planeY * sin(player.rotSpeed);
-            player.planeY = oldPlaneX * sin(player.rotSpeed) + player.planeY * cos(player.rotSpeed);
+            player.planeX = player.planeX * cos(rotSpeed) - player.planeY * sin(rotSpeed);
+            player.planeY = oldPlaneX * sin(rotSpeed) + player.planeY * cos(rotSpeed);
         }
 
         // Clear screen
