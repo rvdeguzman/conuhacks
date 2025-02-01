@@ -13,10 +13,22 @@ private:
     std::vector<ENetPeer*> clients;
     std::vector<PlayerState> players;
     
+    double lastTime;
+    
     void updatePlayerState(size_t playerIndex, const InputPacket& input) {
         PlayerState& player = players[playerIndex];
-        const double moveSpeed = 0.05;
-        const double rotSpeed = 0.03;
+        
+        // Calculate delta time in seconds
+        double currentTime = enet_time_get() / 1000.0; // Convert to seconds
+        double deltaTime = currentTime - lastTime;
+        lastTime = currentTime;
+        
+        const double BASE_MOVE_SPEED = 3.0; // Units per second
+        const double BASE_ROT_SPEED = 2.0;  // Radians per second
+        
+        // Apply delta time to make movement frame-rate independent
+        const double moveSpeed = BASE_MOVE_SPEED * deltaTime;
+        const double rotSpeed = BASE_ROT_SPEED * deltaTime;
 
         if (input.up) {
             player.posX += player.dirX * moveSpeed;
@@ -49,6 +61,8 @@ public:
         if (enet_initialize() != 0) {
             throw std::runtime_error("Failed to initialize ENet");
         }
+
+        lastTime = enet_time_get() / 1000.0;
 
         ENetAddress address;
         address.host = ENET_HOST_ANY;
