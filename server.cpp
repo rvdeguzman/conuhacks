@@ -23,8 +23,8 @@ private:
         double deltaTime = currentTime - lastTime;
         lastTime = currentTime;
         
-        const double BASE_MOVE_SPEED = 3.0; // Units per second
-        const double BASE_ROT_SPEED = 2.0;  // Radians per second
+        const double BASE_MOVE_SPEED = 6.0; // Units per second
+        const double BASE_ROT_SPEED = 4.0;  // Radians per second
         
         // Apply delta time to make movement frame-rate independent
         const double moveSpeed = BASE_MOVE_SPEED * deltaTime;
