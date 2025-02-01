@@ -248,19 +248,20 @@ private:
             drawStartX = std::max(0, drawStartX);
             drawEndX = std::min(SCREEN_WIDTH - 1, drawEndX);
 
+            SDL_Rect srcRect = getWalkingFrame(*sprite.spriteSheet);
+
             for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
-                if (transformY > zBuffer[stripe]) continue; // Only remove parts behind walls
+                if (stripe < 0 || stripe >= SCREEN_WIDTH) continue; // Skip out-of-bounds
 
-                // int frameIndex = (SDL_GetTicks() / 100) % (sprite.spriteSheet->cols * sprite.spriteSheet->rows);
-                // SDL_Rect srcRect = getFrameRect(*sprite.spriteSheet, frameIndex);
-                SDL_Rect srcRect = getWalkingFrame(playerSprite);
+                if (transformY > zBuffer[stripe]) continue;
 
+                SDL_Rect columnRect = {stripe, drawStartY, 1, spriteHeight}; // Render 1px wide column
+                int texX = (int)((stripe - drawStartX) * (float)srcRect.w / (drawEndX - drawStartX));
+                SDL_Rect srcColumn = {srcRect.x + texX, srcRect.y, 1, srcRect.h};
 
-                
-                SDL_Rect destRect = {drawStartX, drawStartY, spriteWidth, spriteHeight};
-
-                SDL_RenderCopy(renderer, playerSprite.texture, &srcRect, &destRect);
+                SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcColumn, &columnRect);
             }
+
 
 
             // for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
