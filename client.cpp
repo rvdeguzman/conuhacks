@@ -9,8 +9,8 @@ const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
 const int MAP_WIDTH = 8;
 const int MAP_HEIGHT = 8;
-// const char* SERVER_HOST = "127.0.0.1";
-const char* SERVER_HOST = "192.168.163.247";
+const char* SERVER_HOST = "127.0.0.1";
+//const char* SERVER_HOST = "192.168.163.247";
 const int SERVER_PORT = 1234;
 
 // Define the map (1 represents walls, 0 represents empty space)
