@@ -8,8 +8,8 @@ all: server client
 server: server.cpp common.h
 	$(CXX) $(CXXFLAGS) server.cpp $(LDFLAGS) -o server
 
-client: client.cpp common.h
-	$(CXX) $(CXXFLAGS) client.cpp $(LDFLAGS) -o client
+client: client.cpp SpriteSheet.cpp common.h
+	$(CXX) $(CXXFLAGS) client.cpp SpriteSheet.cpp $(LDFLAGS) -o client
 
 clean:
 	rm -f server client
