@@ -4,13 +4,14 @@
 #include <vector>
 #include <iostream>
 #include "common.h"
+#include <SDL2/SDL_image.h>
 
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
 const int MAP_WIDTH = 8;
 const int MAP_HEIGHT = 8;
-// const char* SERVER_HOST = "127.0.0.1";
-const char* SERVER_HOST = "192.168.163.247";
+const char* SERVER_HOST = "127.0.0.1";
+// const char* SERVER_HOST = "192.168.163.247";
 const int SERVER_PORT = 1234;
 
 // Define the map (1 represents walls, 0 represents empty space)
@@ -37,6 +38,8 @@ private:
     std::vector<PlayerState> players;
     size_t playerID;
     bool isRunning;
+    SDL_Texture* playerTexture;
+
 
     void handleInput() {
         const Uint8* state = SDL_GetKeyboardState(NULL);
@@ -134,18 +137,37 @@ private:
             SDL_RenderDrawLine(renderer, x, drawStart, x, drawEnd);
         }
 
-        // Render other players (as simple rectangles for now)
+        // Render players as 3D blocks
         for (size_t i = 0; i < players.size(); i++) {
             if (i != playerID) {
-                SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-                SDL_Rect rect = {
-                    int(players[i].posX * 32),
-                    int(players[i].posY * 32),
-                    16, 16
-                };
-                SDL_RenderFillRect(renderer, &rect);
+                double spriteX = players[i].posX - currentPlayer.posX;
+                double spriteY = players[i].posY - currentPlayer.posY;
+
+                double invDet = 1.0 / (currentPlayer.planeX * currentPlayer.dirY - currentPlayer.dirX * currentPlayer.planeY);
+
+                double transformX = invDet * (currentPlayer.dirY * spriteX - currentPlayer.dirX * spriteY);
+                double transformY = invDet * (-currentPlayer.planeY * spriteX + currentPlayer.planeX * spriteY);
+
+                int spriteScreenX = int((SCREEN_WIDTH / 2) * (1 + transformX / transformY));
+
+                int spriteHeight = abs(int(SCREEN_HEIGHT / transformY));
+                int drawStartY = -spriteHeight / 2 + SCREEN_HEIGHT / 2;
+                if (drawStartY < 0) drawStartY = 0;
+                int drawEndY = spriteHeight / 2 + SCREEN_HEIGHT / 2;
+                if (drawEndY >= SCREEN_HEIGHT) drawEndY = SCREEN_HEIGHT - 1;
+
+                int spriteWidth = abs(int(SCREEN_HEIGHT / transformY));
+                int drawStartX = -spriteWidth / 2 + spriteScreenX;
+                if (drawStartX < 0) drawStartX = 0;
+                int drawEndX = spriteWidth / 2 + spriteScreenX;
+                if (drawEndX >= SCREEN_WIDTH) drawEndX = SCREEN_WIDTH - 1;
+
+                SDL_Rect destRect = {drawStartX, drawStartY, spriteWidth, spriteHeight};
+                SDL_RenderCopy(renderer, playerTexture, NULL, &destRect);
+
             }
         }
+
 
         SDL_RenderPresent(renderer);
     }
@@ -156,18 +178,31 @@ public:
             throw std::runtime_error("Failed to initialize SDL or ENet");
         }
 
+        if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
+            throw std::runtime_error("SDL2_image initialization failed: " + std::string(IMG_GetError()));
+        }
+
+        std::cout << "Initializing SDL2..." << std::endl;
         window = SDL_CreateWindow("Raycasting Client",
             SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
             SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
         
         if (!window) {
-            throw std::runtime_error("Failed to create window");
+            std::cerr << "Failed to create window: " << SDL_GetError() << std::endl;
+            return;
+        } else {
+            std::cout << "SDL window created successfully!" << std::endl;
         }
+
 
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
         if (!renderer) {
-            throw std::runtime_error("Failed to create renderer");
+            std::cerr << "Failed to create renderer: " << SDL_GetError() << std::endl;
+            return;
+        } else {
+            std::cout << "SDL renderer created successfully!" << std::endl;
         }
+
 
         client = enet_host_create(NULL, 1, 2, 0, 0);
         if (!client) {
@@ -187,7 +222,23 @@ public:
         players.resize(2);
         playerID = 0;  // Will be set properly when connecting to server
         isRunning = true;
+
+        // Load player texture
+        SDL_Surface* tempSurface = IMG_Load("player_texture.png");
+        if (!tempSurface) {
+            throw std::runtime_error("Failed to load player texture: " + std::string(IMG_GetError()));
+        }
+        playerTexture = SDL_CreateTextureFromSurface(renderer, tempSurface);
+        if (!playerTexture) {
+            std::cerr << "Failed to create player texture: " << SDL_GetError() << std::endl;
+            return;
+        } else {
+            std::cout << "Player texture loaded successfully!" << std::endl;
+        }
+
+        SDL_FreeSurface(tempSurface);
     }
+
 
     void run() {
         SDL_Event e;
@@ -230,6 +281,7 @@ public:
     }
 
     ~GameClient() {
+        SDL_DestroyTexture(playerTexture);
         enet_peer_disconnect(server, 0);
         
         ENetEvent event;
@@ -249,9 +301,11 @@ public:
         enet_host_destroy(client);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
+        IMG_Quit();  // ✅ Properly quit SDL2_Image
         enet_deinitialize();
         SDL_Quit();
     }
+
 };
 
 int main(int argc, char* args[]) {
