@@ -28,6 +28,7 @@ struct InputPacket {
     bool down;
     bool left;
     bool right;
+    double mouseRotation;
 };
 
 struct PositionPacket {

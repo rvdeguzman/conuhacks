@@ -13,22 +13,10 @@ private:
     std::vector<ENetPeer*> clients;
     std::vector<PlayerState> players;
     
-    double lastTime;
-    
     void updatePlayerState(size_t playerIndex, const InputPacket& input) {
         PlayerState& player = players[playerIndex];
-        
-        // Calculate delta time in seconds
-        double currentTime = enet_time_get() / 1000.0; // Convert to seconds
-        double deltaTime = currentTime - lastTime;
-        lastTime = currentTime;
-        
-        const double BASE_MOVE_SPEED = 6.0; // Units per second
-        const double BASE_ROT_SPEED = 3.0;  // Radians per second
-        
-        // Apply delta time to make movement frame-rate independent
-        const double moveSpeed = BASE_MOVE_SPEED * deltaTime;
-        const double rotSpeed = BASE_ROT_SPEED * deltaTime;
+        const double moveSpeed = 0.05;
+        const double rotSpeed = 0.03;
 
         if (input.up) {
             player.posX += player.dirX * moveSpeed;
@@ -61,8 +49,6 @@ public:
         if (enet_initialize() != 0) {
             throw std::runtime_error("Failed to initialize ENet");
         }
-
-        lastTime = enet_time_get() / 1000.0;
 
         ENetAddress address;
         address.host = ENET_HOST_ANY;
@@ -104,35 +90,8 @@ public:
                         std::cout << "Client connected from " 
                                 << event.peer->address.host << ":" 
                                 << event.peer->address.port << std::endl;
-                        
-                        // Find first available player slot
-                        size_t newPlayerID = clients.size();
                         clients.push_back(event.peer);
-                        event.peer->data = (void*)newPlayerID;
-
-                        // Send the player their ID
-                        uint8_t idPacket = (uint8_t)newPlayerID;
-                        ENetPacket* packet = enet_packet_create(
-                            &idPacket,
-                            sizeof(uint8_t),
-                            ENET_PACKET_FLAG_RELIABLE
-                        );
-                        enet_peer_send(event.peer, 0, packet);
-
-                        // Send initial positions of all players to the new client
-                        for (size_t i = 0; i < players.size(); i++) {
-                            PositionPacket posPacket;
-                            posPacket.playerID = i;
-                            posPacket.state = players[i];
-                            
-                            packet = enet_packet_create(
-                                &posPacket,
-                                sizeof(PositionPacket),
-                                ENET_PACKET_FLAG_RELIABLE
-                            );
-                            enet_peer_send(event.peer, 0, packet);
-                        }
-                        
+                        event.peer->data = (void*)(clients.size() - 1);
                         break;
                     }
                     case ENET_EVENT_TYPE_RECEIVE: {
@@ -161,21 +120,6 @@ public:
                         std::cout << "Client disconnected" << std::endl;
                         size_t playerIndex = (size_t)event.peer->data;
                         clients[playerIndex] = nullptr;
-                        
-                        // Reset the disconnected player's position
-                        players[playerIndex] = PlayerState();
-                        
-                        // Notify other clients about the disconnection
-                        PositionPacket posPacket;
-                        posPacket.playerID = playerIndex;
-                        posPacket.state = players[playerIndex];
-                        
-                        ENetPacket* packet = enet_packet_create(
-                            &posPacket,
-                            sizeof(PositionPacket),
-                            ENET_PACKET_FLAG_RELIABLE
-                        );
-                        enet_host_broadcast(server, 0, packet);
                         break;
                     }
                     default:

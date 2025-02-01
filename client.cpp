@@ -11,6 +11,8 @@ const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
 const int MAP_WIDTH = 8;
 const int MAP_HEIGHT = 8;
+const int MINIMAP_SIZE = 120; // Size of the minimap
+const double MOUSE_SENSITIVITY = 0.003; // Adjust this to change mouse sensitivity
 const char* SERVER_HOST = "127.0.0.1";
 //const char* SERVER_HOST = "192.168.163.247";
 const int SERVER_PORT = 1234;
@@ -37,6 +39,8 @@ private:
     size_t playerID;
     bool isRunning;
     SDL_Texture* playerTexture;
+    int previousMouseX;
+    bool firstMouse;
 
 
     void handleInput() {
@@ -48,12 +52,91 @@ private:
         input.left = state[SDL_SCANCODE_LEFT];
         input.right = state[SDL_SCANCODE_RIGHT];
 
+        int mouseX, mouseY;
+        SDL_GetMouseState(&mouseX, &mouseY);
+        
+        if (firstMouse) {
+            previousMouseX = mouseX;
+            firstMouse = false;
+        }
+
+       // Calculate mouse movement and rotate view
+        int mouseDelta = mouseX - previousMouseX;
+        if (abs(mouseDelta) > 0) {
+            input.mouseRotation = mouseDelta * MOUSE_SENSITIVITY;
+        } else {
+            input.mouseRotation = 0.0;
+        }
+        
+        previousMouseX = mouseX;
+
         ENetPacket* packet = enet_packet_create(
             &input, 
             sizeof(InputPacket), 
             ENET_PACKET_FLAG_RELIABLE
         );
         enet_peer_send(server, 0, packet);
+    }
+
+    void renderMinimap() {
+        if (players.empty()) return;
+
+        const int cellSize = MINIMAP_SIZE / MAP_WIDTH;
+        const int minimapX = SCREEN_WIDTH - MINIMAP_SIZE - 10;
+        const int minimapY = 10;
+
+        // Draw background
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 128);
+        SDL_Rect minimapBg = {minimapX - 2, minimapY - 2, MINIMAP_SIZE + 4, MINIMAP_SIZE + 4};
+        SDL_RenderFillRect(renderer, &minimapBg);
+
+        // Draw walls
+        for (int x = 0; x < MAP_WIDTH; x++) {
+            for (int y = 0; y < MAP_HEIGHT; y++) {
+                if (worldMap[x][y] == 1) {
+                    SDL_SetRenderDrawColor(renderer, 128, 128, 128, 255);
+                    SDL_Rect wallRect = {
+                        minimapX + x * cellSize,
+                        minimapY + y * cellSize,
+                        cellSize,
+                        cellSize
+                    };
+                    SDL_RenderFillRect(renderer, &wallRect);
+                }
+            }
+        }
+
+        // Draw players
+        for (size_t i = 0; i < players.size(); i++) {
+            const PlayerState& player = players[i];
+            int playerMinimapX = minimapX + int(player.posX * cellSize);
+            int playerMinimapY = minimapY + int(player.posY * cellSize);
+
+            // Draw player dot
+            SDL_SetRenderDrawColor(renderer, 
+                i == playerID ? 0 : 255,  // Red
+                i == playerID ? 255 : 0,  // Green
+                0,                        // Blue
+                255);                     // Alpha
+
+            SDL_Rect playerRect = {
+                playerMinimapX - 2,
+                playerMinimapY - 2,
+                4,
+                4
+            };
+            SDL_RenderFillRect(renderer, &playerRect);
+
+            // Draw direction line
+            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+            SDL_RenderDrawLine(
+                renderer,
+                playerMinimapX,
+                playerMinimapY,
+                playerMinimapX + int(player.dirX * cellSize),
+                playerMinimapY + int(player.dirY * cellSize)
+            );
+        }
     }
 
     void render() {
@@ -130,6 +213,7 @@ private:
                 side == 1 ? 155 : 255,  // Green
                 side == 1 ? 155 : 255,  // Blue
                 255);                   // Alpha
+                
 
             // Draw the vertical line
             SDL_RenderDrawLine(renderer, x, drawStart, x, drawEnd);
@@ -166,15 +250,19 @@ private:
             }
         }
 
+        renderMinimap();
 
         SDL_RenderPresent(renderer);
     }
 
 public:
-    GameClient() : isRunning(false) {
+    GameClient() : isRunning(false), firstMouse(true) {
         if (SDL_Init(SDL_INIT_VIDEO) < 0 || enet_initialize() != 0) {
             throw std::runtime_error("Failed to initialize SDL or ENet");
         }
+
+        // Set relative mouse mode for smoother camera control
+        SDL_SetRelativeMouseMode(SDL_TRUE);
 
         if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
             throw std::runtime_error("SDL2_image initialization failed: " + std::string(IMG_GetError()));
@@ -250,6 +338,11 @@ public:
             while (SDL_PollEvent(&e)) {
                 if (e.type == SDL_QUIT) {
                     isRunning = false;
+                }
+                else if (e.type == SDL_KEYDOWN) {
+                    if (e.key.keysym.sym == SDLK_ESCAPE) {
+                        isRunning = false;
+                    }
                 }
             }
 
