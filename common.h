@@ -1,4 +1,3 @@
-
 #pragma once
 #include <enet/enet.h>
 #include <cstdint>
@@ -35,5 +34,11 @@ struct PositionPacket {
     uint8_t type = PLAYER_POSITION;
     uint8_t playerID;
     PlayerState state;
+};
+
+struct Bullet {
+    double posX, posY;  // Position of the bullet
+    double dirX, dirY;  // Direction of the bullet
+    bool active;        // Whether the bullet is active
 };
 
