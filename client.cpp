@@ -153,10 +153,15 @@ private:
             double step = 1.0 * TEX_HEIGHT / lineHeight;
             double texPos = (drawStart - SCREEN_HEIGHT / 2 + lineHeight / 2) * step;
 
-            // Draw the textured vertical line
-            SDL_Rect srcRect = {texX, 0, 1, TEX_HEIGHT};
-            SDL_Rect destRect = {x, drawStart, 1, drawEnd - drawStart};
-            SDL_RenderCopy(renderer, wallTextures[texNum], &srcRect, &destRect);
+            // Draw the textured vertical line pixel by pixel
+            for(int y = drawStart; y < drawEnd; y++) {
+                int texY = (int)texPos & (TEX_HEIGHT - 1);
+                texPos += step;
+                
+                SDL_Rect srcRect = {texX, texY, 1, 1};
+                SDL_Rect destRect = {x, y, 1, 1};
+                SDL_RenderCopy(renderer, wallTextures[texNum], &srcRect, &destRect);
+            }
         }
 
         // Render players as 3D blocks
