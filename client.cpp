@@ -6,27 +6,27 @@
 #include <iostream>
 #include "common.h"
 #include <SDL2/SDL_image.h>
+#include <algorithm>
+#include "SpriteSheet.h"
 
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
 const int MAP_WIDTH = 8;
 const int MAP_HEIGHT = 8;
-const int MINIMAP_SIZE = 120; // Size of the minimap
-const double MOUSE_SENSITIVITY = 0.003; // Adjust this to change mouse sensitivity
 const char* SERVER_HOST = "127.0.0.1";
 //const char* SERVER_HOST = "192.168.163.247";
 const int SERVER_PORT = 1234;
 
 // Define the map (1 represents walls, 0 represents empty space)
 const int worldMap[MAP_WIDTH][MAP_HEIGHT] = {
-    {1,1,1,1,1,1,1,1},
-    {1,0,0,0,0,0,0,1},
-    {1,0,1,0,0,1,0,1},
-    {1,0,0,0,0,0,0,1},
-    {1,0,1,0,0,1,0,1},
-    {1,0,1,0,0,1,0,1},
-    {1,0,0,0,0,0,0,1},
-    {1,1,1,1,1,1,1,1}
+    {4,4,4,4,4,4,4,4},
+    {4,0,0,0,0,0,0,4},
+    {4,0,2,0,0,2,0,4},
+    {4,0,0,0,0,0,0,1},
+    {4,0,2,0,0,2,0,4},
+    {4,0,2,0,0,2,0,4},
+    {4,0,0,0,0,0,0,4},
+    {4,3,3,1,1,3,3,4}
 };
 
 class GameClient {
@@ -39,8 +39,19 @@ private:
     size_t playerID;
     bool isRunning;
     SDL_Texture* playerTexture;
-    int previousMouseX;
-    bool firstMouse;
+    
+    static const int NUM_TEXTURES = 4;
+    SDL_Texture* wallTextures[NUM_TEXTURES];
+    static const int TEX_WIDTH = 64;
+    static const int TEX_HEIGHT = 64;
+    // SDL_Texture* playerTexture;
+    SpriteSheet playerSprite;
+
+
+    // struct Sprite {
+    //     double x, y, distance;
+    //     SDL_Texture* texture;
+    // };
 
 
     void handleInput() {
@@ -52,24 +63,6 @@ private:
         input.left = state[SDL_SCANCODE_LEFT];
         input.right = state[SDL_SCANCODE_RIGHT];
 
-        int mouseX, mouseY;
-        SDL_GetMouseState(&mouseX, &mouseY);
-        
-        if (firstMouse) {
-            previousMouseX = mouseX;
-            firstMouse = false;
-        }
-
-       // Calculate mouse movement and rotate view
-        int mouseDelta = mouseX - previousMouseX;
-        if (abs(mouseDelta) > 0) {
-            input.mouseRotation = mouseDelta * MOUSE_SENSITIVITY;
-        } else {
-            input.mouseRotation = 0.0;
-        }
-        
-        previousMouseX = mouseX;
-
         ENetPacket* packet = enet_packet_create(
             &input, 
             sizeof(InputPacket), 
@@ -78,75 +71,75 @@ private:
         enet_peer_send(server, 0, packet);
     }
 
-    void renderMinimap() {
-        if (players.empty()) return;
-
-        const int cellSize = MINIMAP_SIZE / MAP_WIDTH;
-        const int minimapX = SCREEN_WIDTH - MINIMAP_SIZE - 10;
-        const int minimapY = 10;
-
-        // Draw background
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 128);
-        SDL_Rect minimapBg = {minimapX - 2, minimapY - 2, MINIMAP_SIZE + 4, MINIMAP_SIZE + 4};
-        SDL_RenderFillRect(renderer, &minimapBg);
-
-        // Draw walls
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            for (int y = 0; y < MAP_HEIGHT; y++) {
-                if (worldMap[x][y] == 1) {
-                    SDL_SetRenderDrawColor(renderer, 128, 128, 128, 255);
-                    SDL_Rect wallRect = {
-                        minimapX + x * cellSize,
-                        minimapY + y * cellSize,
-                        cellSize,
-                        cellSize
-                    };
-                    SDL_RenderFillRect(renderer, &wallRect);
-                }
-            }
-        }
-
-        // Draw players
-        for (size_t i = 0; i < players.size(); i++) {
-            const PlayerState& player = players[i];
-            int playerMinimapX = minimapX + int(player.posX * cellSize);
-            int playerMinimapY = minimapY + int(player.posY * cellSize);
-
-            // Draw player dot
-            SDL_SetRenderDrawColor(renderer, 
-                i == playerID ? 0 : 255,  // Red
-                i == playerID ? 255 : 0,  // Green
-                0,                        // Blue
-                255);                     // Alpha
-
-            SDL_Rect playerRect = {
-                playerMinimapX - 2,
-                playerMinimapY - 2,
-                4,
-                4
-            };
-            SDL_RenderFillRect(renderer, &playerRect);
-
-            // Draw direction line
-            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
-            SDL_RenderDrawLine(
-                renderer,
-                playerMinimapX,
-                playerMinimapY,
-                playerMinimapX + int(player.dirX * cellSize),
-                playerMinimapY + int(player.dirY * cellSize)
-            );
-        }
-    }
-
     void render() {
-        if (players.empty()) return;
+        if (players.empty() || playerID >= players.size()) {
+            std::cerr << "Error: No valid player data. Skipping rendering." << std::endl;
+            return;
+        }
+
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
         // Render from current player's perspective
         const PlayerState& currentPlayer = players[playerID];
+
+        std::vector<double> zBuffer(SCREEN_WIDTH, 1e30); // Large initial depth
+
+        for (int x = 0; x < SCREEN_WIDTH; x++) {
+            double cameraX = 2 * x / double(SCREEN_WIDTH) - 1;
+            double rayDirX = currentPlayer.dirX + currentPlayer.planeX * cameraX;
+            double rayDirY = currentPlayer.dirY + currentPlayer.planeY * cameraX;
+
+            int mapX = int(currentPlayer.posX);
+            int mapY = int(currentPlayer.posY);
+
+            double sideDistX, sideDistY;
+            double deltaDistX = std::abs(1 / rayDirX);
+            double deltaDistY = std::abs(1 / rayDirY);
+            double perpWallDist;
+
+            int stepX, stepY;
+            int hit = 0;
+            int side;
+
+            if (rayDirX < 0) {
+                stepX = -1;
+                sideDistX = (currentPlayer.posX - mapX) * deltaDistX;
+            } else {
+                stepX = 1;
+                sideDistX = (mapX + 1.0 - currentPlayer.posX) * deltaDistX;
+            }
+            if (rayDirY < 0) {
+                stepY = -1;
+                sideDistY = (currentPlayer.posY - mapY) * deltaDistY;
+            } else {
+                stepY = 1;
+                sideDistY = (mapY + 1.0 - currentPlayer.posY) * deltaDistY;
+            }
+
+            while (hit == 0) {
+                if (sideDistX < sideDistY) {
+                    sideDistX += deltaDistX;
+                    mapX += stepX;
+                    side = 0;
+                } else {
+                    sideDistY += deltaDistY;
+                    mapY += stepY;
+                    side = 1;
+                }
+                if (worldMap[mapX][mapY] > 0)
+                    hit = 1;
+            }
+
+            if (side == 0)
+                perpWallDist = (mapX - currentPlayer.posX + (1.0 - stepX) / 2.0) / rayDirX;
+            else
+                perpWallDist = (mapY - currentPlayer.posY + (1.0 - stepY) / 2.0) / rayDirY;
+
+            zBuffer[x] = perpWallDist; // Store depth buffer
+        }
+
         
         // Raycasting
         for (int x = 0; x < SCREEN_WIDTH; x++) {
@@ -207,62 +200,125 @@ private:
             int drawEnd = lineHeight / 2 + SCREEN_HEIGHT / 2;
             if (drawEnd >= SCREEN_HEIGHT) drawEnd = SCREEN_HEIGHT - 1;
 
-            // Choose wall color
-            SDL_SetRenderDrawColor(renderer, 
-                side == 1 ? 155 : 255,  // Red
-                side == 1 ? 155 : 255,  // Green
-                side == 1 ? 155 : 255,  // Blue
-                255);                   // Alpha
+            // Calculate texture coordinates
+            double wallX;
+            if (side == 0) {
+                wallX = currentPlayer.posY + perpWallDist * rayDirY;
+            } else {
+                wallX = currentPlayer.posX + perpWallDist * rayDirX;
+            }
+            wallX -= floor(wallX);
+
+            // x coordinate on the texture
+            int texX = int(wallX * TEX_WIDTH);
+            if(side == 0 && rayDirX > 0) texX = TEX_WIDTH - texX - 1;
+            if(side == 1 && rayDirY < 0) texX = TEX_WIDTH - texX - 1;
+
+            // Choose texture based on wall type (1-4)
+            int texNum = worldMap[mapX][mapY] - 1;
+            // Manual clamp implementation
+            texNum = (texNum < 0) ? 0 : ((texNum > NUM_TEXTURES - 1) ? NUM_TEXTURES - 1 : texNum);
+
+            // Calculate texture scaling
+            double step = 1.0 * TEX_HEIGHT / lineHeight;
+            double texPos = (drawStart - SCREEN_HEIGHT / 2 + lineHeight / 2) * step;
+
+            // Draw the textured vertical line pixel by pixel
+            for(int y = drawStart; y < drawEnd; y++) {
+                int texY = (int)texPos & (TEX_HEIGHT - 1);
+                texPos += step;
                 
-
-            // Draw the vertical line
-            SDL_RenderDrawLine(renderer, x, drawStart, x, drawEnd);
-        }
-
-        // Render players as 3D blocks
-        for (size_t i = 0; i < players.size(); i++) {
-            if (i != playerID) {
-                double spriteX = players[i].posX - currentPlayer.posX;
-                double spriteY = players[i].posY - currentPlayer.posY;
-
-                double invDet = 1.0 / (currentPlayer.planeX * currentPlayer.dirY - currentPlayer.dirX * currentPlayer.planeY);
-
-                double transformX = invDet * (currentPlayer.dirY * spriteX - currentPlayer.dirX * spriteY);
-                double transformY = invDet * (-currentPlayer.planeY * spriteX + currentPlayer.planeX * spriteY);
-
-                int spriteScreenX = int((SCREEN_WIDTH / 2) * (1 + transformX / transformY));
-
-                int spriteHeight = abs(int(SCREEN_HEIGHT / transformY));
-                int drawStartY = -spriteHeight / 2 + SCREEN_HEIGHT / 2;
-                if (drawStartY < 0) drawStartY = 0;
-                int drawEndY = spriteHeight / 2 + SCREEN_HEIGHT / 2;
-                if (drawEndY >= SCREEN_HEIGHT) drawEndY = SCREEN_HEIGHT - 1;
-
-                int spriteWidth = abs(int(SCREEN_HEIGHT / transformY));
-                int drawStartX = -spriteWidth / 2 + spriteScreenX;
-                if (drawStartX < 0) drawStartX = 0;
-                int drawEndX = spriteWidth / 2 + spriteScreenX;
-                if (drawEndX >= SCREEN_WIDTH) drawEndX = SCREEN_WIDTH - 1;
-
-                SDL_Rect destRect = {drawStartX, drawStartY, spriteWidth, spriteHeight};
-                SDL_RenderCopy(renderer, playerTexture, NULL, &destRect);
-
+                SDL_Rect srcRect = {texX, texY, 1, 1};
+                SDL_Rect destRect = {x, y, 1, 1};
+                SDL_RenderCopy(renderer, wallTextures[texNum], &srcRect, &destRect);
             }
         }
 
-        renderMinimap();
+        // Sort sprites by distance (furthest first)
+        std::vector<Sprite> spriteList;
+        for (size_t i = 0; i < players.size(); i++) {
+            if (i != playerID) {
+                double dx = players[i].posX - currentPlayer.posX;
+                double dy = players[i].posY - currentPlayer.posY;
+                double distance = dx * dx + dy * dy; // Use squared distance for efficiency
+                
+                spriteList.push_back(Sprite(players[i].posX, players[i].posY, distance, &playerSprite));
+                // spriteList.push_back({players[i].posX, players[i].posY, distance, playerSprite});
+            }
+        }
+
+        std::sort(spriteList.begin(), spriteList.end(), [](const Sprite& a, const Sprite& b) {
+            return a.distance > b.distance; // Render closest last
+        });
+
+        // Render sprites with per-pixel visibility check
+        for (const auto& sprite : spriteList) {
+            double spriteX = sprite.x - currentPlayer.posX;
+            double spriteY = sprite.y - currentPlayer.posY;
+
+            double invDet = 1.0 / (currentPlayer.planeX * currentPlayer.dirY - currentPlayer.dirX * currentPlayer.planeY);
+            double transformX = invDet * (currentPlayer.dirY * spriteX - currentPlayer.dirX * spriteY);
+            double transformY = invDet * (-currentPlayer.planeY * spriteX + currentPlayer.planeX * spriteY);
+
+            if (transformY <= 0) continue; // Don't draw if behind the player
+
+            int spriteScreenX = int((SCREEN_WIDTH / 2) * (1 + transformX / transformY));
+
+            int spriteHeight = abs(int(SCREEN_HEIGHT / transformY)); // Scale with distance
+            int spriteWidth = spriteHeight; // Maintain square proportions
+
+            int drawStartY = -spriteHeight / 2 + SCREEN_HEIGHT / 2;
+            int drawEndY = spriteHeight / 2 + SCREEN_HEIGHT / 2;
+            drawStartY = std::max(0, drawStartY);
+            drawEndY = std::min(SCREEN_HEIGHT - 1, drawEndY);
+
+            int drawStartX = -spriteWidth / 2 + spriteScreenX;
+            int drawEndX = spriteWidth / 2 + spriteScreenX;
+            drawStartX = std::max(0, drawStartX);
+            drawEndX = std::min(SCREEN_WIDTH - 1, drawEndX);
+
+            SDL_Rect srcRect = getWalkingFrame(*sprite.spriteSheet);
+
+            for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
+                if (stripe < 0 || stripe >= SCREEN_WIDTH) continue; // Skip out-of-bounds
+
+                if (transformY > zBuffer[stripe]) continue;
+
+                SDL_Rect columnRect = {stripe, drawStartY, 1, spriteHeight}; // Render 1px wide column
+                int texX = (int)((stripe - drawStartX) * (float)srcRect.w / (drawEndX - drawStartX));
+                SDL_Rect srcColumn = {srcRect.x + texX, srcRect.y, 1, srcRect.h};
+
+                SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcColumn, &columnRect);
+            }
+
+
+
+            // for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
+            //     if (transformY > zBuffer[stripe]) continue; // Only remove parts behind walls
+
+            //     // int frameIndex = (SDL_GetTicks() / 100) % (playerSprite.cols * playerSprite.rows);
+            //     // SDL_Rect srcRect = getFrameRect(playerSprite, frameIndex);
+            //     SDL_Rect destRect = {drawStartX, drawStartY, spriteWidth, spriteHeight};
+
+            //     // SDL_RenderCopy(renderer, playerSprite.texture, &srcRect, &destRect);
+            //     int frameIndex = (SDL_GetTicks() / 100) % (sprite.spriteSheet->cols * sprite.spriteSheet->rows);
+            //     SDL_Rect srcRect = getFrameRect(*sprite.spriteSheet, frameIndex);
+            //     SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcRect, &destRect);
+
+
+            //     // SDL_Rect destRect = {stripe, drawStartY, 1, spriteHeight}; // Draw one column
+            //     // SDL_RenderCopy(renderer, sprite.texture, NULL, &destRect);
+            // }
+        }
 
         SDL_RenderPresent(renderer);
     }
 
 public:
-    GameClient() : isRunning(false), firstMouse(true) {
+    GameClient() : isRunning(false) {
         if (SDL_Init(SDL_INIT_VIDEO) < 0 || enet_initialize() != 0) {
             throw std::runtime_error("Failed to initialize SDL or ENet");
         }
-
-        // Set relative mouse mode for smoother camera control
-        SDL_SetRelativeMouseMode(SDL_TRUE);
 
         if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
             throw std::runtime_error("SDL2_image initialization failed: " + std::string(IMG_GetError()));
@@ -304,10 +360,43 @@ public:
             throw std::runtime_error("Failed to connect to server");
         }
 
+        playerSprite = loadSpriteSheet(renderer, "msgunner.info", "msgunner.bmp");
+
+        if (playerSprite.texture == nullptr) {
+            std::cerr << "Error: Failed to load sprite sheet!" << std::endl;
+        } else {
+            std::cout << "Sprite sheet loaded successfully!" << std::endl;
+            std::cout << "Sprite Info: " << playerSprite.cols << " cols, " 
+                    << playerSprite.rows << " rows, " 
+                    << playerSprite.frameWidth << "x" << playerSprite.frameWidth << std::endl;
+        }
+
+
+
         // Initialize players vector with default states
         players.resize(2);
         playerID = 0;  // Will be set properly when connecting to server
         isRunning = true;
+
+        // Load wall textures
+        const char* textureFiles[NUM_TEXTURES] = {
+            "wall1.png",
+            "wall2.png",
+            "wall3.png",
+            "wall4.png"
+        };
+
+        for(int i = 0; i < NUM_TEXTURES; i++) {
+            SDL_Surface* tempSurface = IMG_Load(textureFiles[i]);
+            if (!tempSurface) {
+                throw std::runtime_error("Failed to load wall texture: " + std::string(IMG_GetError()));
+            }
+            wallTextures[i] = SDL_CreateTextureFromSurface(renderer, tempSurface);
+            SDL_FreeSurface(tempSurface);
+            if (!wallTextures[i]) {
+                throw std::runtime_error("Failed to create wall texture: " + std::string(SDL_GetError()));
+            }
+        }
 
         // Load player texture
         SDL_Surface* tempSurface = IMG_Load("player_texture.png");
@@ -322,7 +411,20 @@ public:
             std::cout << "Player texture loaded successfully!" << std::endl;
         }
 
-        SDL_FreeSurface(tempSurface);
+        // // Load player texture
+        // SDL_Surface* tempSurface = IMG_Load("player_texture.png");
+        // if (!tempSurface) {
+        //     throw std::runtime_error("Failed to load player texture: " + std::string(IMG_GetError()));
+        // }
+        // playerTexture = SDL_CreateTextureFromSurface(renderer, tempSurface);
+        // if (!playerTexture) {
+        //     std::cerr << "Failed to create player texture: " << SDL_GetError() << std::endl;
+        //     return;
+        // } else {
+        //     std::cout << "Player texture loaded successfully!" << std::endl;
+        // }
+
+        // SDL_FreeSurface(tempSurface);
     }
 
 
@@ -338,11 +440,6 @@ public:
             while (SDL_PollEvent(&e)) {
                 if (e.type == SDL_QUIT) {
                     isRunning = false;
-                }
-                else if (e.type == SDL_KEYDOWN) {
-                    if (e.key.keysym.sym == SDLK_ESCAPE) {
-                        isRunning = false;
-                    }
                 }
             }
 
@@ -384,6 +481,18 @@ public:
 
     ~GameClient() {
         SDL_DestroyTexture(playerTexture);
+        for(int i = 0; i < NUM_TEXTURES; i++) {
+            SDL_DestroyTexture(wallTextures[i]);
+        }
+        // SDL_DestroyTexture(playerTexture);
+        // playerSprite.free();
+
+        if (playerSprite.texture) {
+            SDL_DestroyTexture(playerSprite.texture);
+            playerSprite.texture = nullptr;
+        }
+
+
         enet_peer_disconnect(server, 0);
         
         ENetEvent event;
