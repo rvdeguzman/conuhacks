@@ -287,8 +287,8 @@ private:
             if (!bullet.active)
                 continue;
             SDL_Rect bulletRect = {
-                int(bullet.posX * cellSize) - 2,
-                int(bullet.posY * cellSize) - 2,
+                static_cast<int>(bullet.posX * cellSize) - 2,
+                static_cast<int>(bullet.posY * cellSize) - 2,
                 4, 4};
             SDL_RenderFillRect(renderer, &bulletRect);
         }
