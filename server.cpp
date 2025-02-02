@@ -17,6 +17,9 @@ private:
     
     void updatePlayerState(size_t playerIndex, const InputPacket& input) {
         PlayerState& player = players[playerIndex];
+
+        double prevX = player.posX;
+        double prevY = player.posY;
         
         // Calculate delta time in seconds
         double currentTime = enet_time_get() / 1000.0; // Convert to seconds
@@ -54,6 +57,8 @@ private:
             player.planeX = player.planeX * cos(rotSpeed) - player.planeY * sin(rotSpeed);
             player.planeY = oldPlaneX * sin(rotSpeed) + player.planeY * cos(rotSpeed);
         }
+
+        player.isMoving = (player.posX != prevX || player.posY != prevY);
     }
 
 public:
