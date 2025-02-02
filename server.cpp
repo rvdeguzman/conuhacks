@@ -12,7 +12,7 @@ private:
   ENetHost *server;
   std::vector<ENetPeer *> clients;
   std::vector<PlayerState> players;
-  const double PLAYER_RADIUS = 0.2; // Collision radius for players
+  const double PLAYER_RADIUS = 0.5; // Collision radius for players
   const double WALL_BUFFER = 0.1;   // Extra buffer space from walls
   double lastTime;
 
@@ -55,7 +55,6 @@ private:
 
           if (distanceSquared <
               (PLAYER_RADIUS + WALL_BUFFER) * (PLAYER_RADIUS + WALL_BUFFER)) {
-            std::cout << "collision rnnn" << std::endl;
             return true; // Collision detected
           }
         }
@@ -163,7 +162,6 @@ private:
         player.posY = newY;
       }
       // If both failed, player stays in current position
-      std::cout << "player collision" << std::endl;
     }
     player.isMoving = (player.posX != prevX || player.posY != prevY);
   }
