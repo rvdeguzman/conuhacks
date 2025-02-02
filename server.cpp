@@ -195,8 +195,8 @@ public:
     p1.planeY = 0.66;
 
     PlayerState p2;
-    p2.posX = 20.0;
-    p2.posY = 20.0;
+    p2.posX = 14.0;
+    p2.posY = 14.0;
     p2.dirX = 1.0;
     p2.dirY = 0.0;
     p2.planeX = 0.0;
