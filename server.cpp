@@ -9,7 +9,6 @@ const int PORT = 1234;
 PlayerState p1;
 PlayerState p2;
 
-
 class GameServer {
 private:
   ENetHost *server;
@@ -399,27 +398,29 @@ public:
     while (true) {
       ENetEvent event;
       while (enet_host_service(server, &event, 10) > 0) {
-            // std::cout << "📩 Received Packet of type: " << event.type << std::endl;
-            // std::cout << "ENET_EVENT_TYPE_CONNECT: " << ENET_EVENT_TYPE_CONNECT << std::endl;
-            // std::cout << "ENET_EVENT_TYPE_RECEIVE: " << ENET_EVENT_TYPE_RECEIVE << std::endl;
-            // std::cout << "ENET_EVENT_TYPE_DISCONNECT: " << ENET_EVENT_TYPE_DISCONNECT << std::endl;
+        // std::cout << "📩 Received Packet of type: " << event.type <<
+        // std::endl; std::cout << "ENET_EVENT_TYPE_CONNECT: " <<
+        // ENET_EVENT_TYPE_CONNECT << std::endl; std::cout <<
+        // "ENET_EVENT_TYPE_RECEIVE: " << ENET_EVENT_TYPE_RECEIVE << std::endl;
+        // std::cout << "ENET_EVENT_TYPE_DISCONNECT: " <<
+        // ENET_EVENT_TYPE_DISCONNECT << std::endl;
         switch (event.type) {
         case ENET_EVENT_TYPE_CONNECT: {
           std::cout << "Client connected from " << event.peer->address.host
                     << ":" << event.peer->address.port << std::endl;
 
-            switch (players.size()) {
-                case 0: {
-                    players.push_back(p1);
-                    // std::cout << "1 player" << std::endl;
-                    break;
-                }
-                case 1: {
-                    players.push_back(p2);
-                    // std::cout << "2 players" << std::endl;
-                    break;
-                }
-            }
+          switch (players.size()) {
+          case 0: {
+            players.push_back(p1);
+            // std::cout << "1 player" << std::endl;
+            break;
+          }
+          case 1: {
+            players.push_back(p2);
+            // std::cout << "2 players" << std::endl;
+            break;
+          }
+          }
 
           // Find first available player slot
           size_t newPlayerID = clients.size();
@@ -438,16 +439,18 @@ public:
             posPacket.playerID = i;
             posPacket.state = players[i];
 
-            std::cout << "Sending PositionPacket - Player ID: " << (int)posPacket.playerID 
-                  << " | X: " << posPacket.state.posX
-                  << " | Y: " << posPacket.state.posY << std::endl;
+            std::cout << "Sending PositionPacket - Player ID: "
+                      << (int)posPacket.playerID
+                      << " | X: " << posPacket.state.posX
+                      << " | Y: " << posPacket.state.posY << std::endl;
 
             packet = enet_packet_create(&posPacket, sizeof(PositionPacket),
                                         ENET_PACKET_FLAG_RELIABLE);
 
             if (!packet) {
-                std::cerr << "Error: Failed to create position packet!" << std::endl;
-                continue;
+              std::cerr << "Error: Failed to create position packet!"
+                        << std::endl;
+              continue;
             }
 
             enet_peer_send(event.peer, 0, packet);
@@ -456,28 +459,39 @@ public:
           break;
         }
         case ENET_EVENT_TYPE_RECEIVE: {
-            InputPacket* input = (InputPacket*)event.packet->data;
-            size_t playerIndex = (size_t)event.peer->data;
+          size_t playerIndex = (size_t)event.peer->data;
+
+          // Check packet size to determine type
+          if (event.packet->dataLength == sizeof(InputPacket)) {
+            // Handle movement input
+            InputPacket *input = (InputPacket *)event.packet->data;
             updatePlayerState(playerIndex, *input);
-            
+
             // Broadcast updated positions to all clients
             for (size_t i = 0; i < players.size(); i++) {
-                PositionPacket posPacket;
-                posPacket.playerID = i;
-                posPacket.state = players[i];
-                
-                ENetPacket* packet = enet_packet_create(
-                    &posPacket, 
-                    sizeof(PositionPacket), 
-                    ENET_PACKET_FLAG_RELIABLE
-                );
-                enet_host_broadcast(server, 0, packet);
-            }
-            
-            enet_packet_destroy(event.packet);
-            break;
-}
+              PositionPacket posPacket;
+              posPacket.playerID = i;
+              posPacket.state = players[i];
 
+              ENetPacket *packet =
+                  enet_packet_create(&posPacket, sizeof(PositionPacket),
+                                     ENET_PACKET_FLAG_RELIABLE);
+              enet_host_broadcast(server, 0, packet);
+            }
+          } else if (event.packet->dataLength == sizeof(ShotAttemptPacket)) {
+            // Handle shot attempt
+            ShotAttemptPacket *shotPacket =
+                (ShotAttemptPacket *)event.packet->data;
+            handleShot(*shotPacket, players);
+          } else if (event.packet->dataLength == 5 &&
+                     memcmp(event.packet->data, "JOIN", 4) == 0) {
+            // Handle join request
+            broadcastLobbyUpdate();
+          }
+
+          enet_packet_destroy(event.packet);
+          break;
+        }
         case ENET_EVENT_TYPE_DISCONNECT: {
           std::cout << "Client disconnected" << std::endl;
           size_t playerIndex = (size_t)event.peer->data;
@@ -505,29 +519,30 @@ public:
 
   void broadcastLobbyUpdate() {
     if (players.empty()) {
-        std::cerr << "Error: No players in the lobby!" << std::endl;
-        return;
+      std::cerr << "Error: No players in the lobby!" << std::endl;
+      return;
     }
 
     LobbyUpdatePacket lobbyPacket;
     lobbyPacket.numPlayers = players.size();
 
-    std::cout << "Broadcasting lobby update with " << (int)lobbyPacket.numPlayers << " players." << std::endl;
+    std::cout << "Broadcasting lobby update with "
+              << (int)lobbyPacket.numPlayers << " players." << std::endl;
 
     for (size_t i = 0; i < players.size(); i++) {
-        lobbyPacket.players[i] = players[i];  // ✅ Now only sending IDs and positions
+      lobbyPacket.players[i] =
+          players[i]; // ✅ Now only sending IDs and positions
     }
 
-    ENetPacket* packet = enet_packet_create(&lobbyPacket, sizeof(LobbyUpdatePacket), ENET_PACKET_FLAG_RELIABLE);
+    ENetPacket *packet = enet_packet_create(
+        &lobbyPacket, sizeof(LobbyUpdatePacket), ENET_PACKET_FLAG_RELIABLE);
     if (!packet) {
-        std::cerr << "Error: Failed to create lobby update packet!" << std::endl;
-        return;
+      std::cerr << "Error: Failed to create lobby update packet!" << std::endl;
+      return;
     }
 
     enet_host_broadcast(server, 0, packet);
-    }
-
-
+  }
 
   ~GameServer() {
     enet_host_destroy(server);
