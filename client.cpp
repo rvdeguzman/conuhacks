@@ -239,72 +239,16 @@ private:
       int mapX = int(currentPlayer.posX);
       int mapY = int(currentPlayer.posY);
 
-      double sideDistX, sideDistY;
+      // Calculate ray step and initial sideDist
       double deltaDistX = std::abs(1 / rayDirX);
       double deltaDistY = std::abs(1 / rayDirY);
-      double perpWallDist;
 
+      double sideDistX, sideDistY;
       int stepX, stepY;
       int hit = 0;
       int side;
 
-      if (rayDirX < 0) {
-        stepX = -1;
-        sideDistX = (currentPlayer.posX - mapX) * deltaDistX;
-      } else {
-        stepX = 1;
-        sideDistX = (mapX + 1.0 - currentPlayer.posX) * deltaDistX;
-      }
-      if (rayDirY < 0) {
-        stepY = -1;
-        sideDistY = (currentPlayer.posY - mapY) * deltaDistY;
-      } else {
-        stepY = 1;
-        sideDistY = (mapY + 1.0 - currentPlayer.posY) * deltaDistY;
-      }
-
-      while (hit == 0) {
-        if (sideDistX < sideDistY) {
-          sideDistX += deltaDistX;
-          mapX += stepX;
-          side = 0;
-        } else {
-          sideDistY += deltaDistY;
-          mapY += stepY;
-          side = 1;
-        }
-        if (worldMap[mapX][mapY] > 0)
-          hit = 1;
-      }
-
-      if (side == 0)
-        perpWallDist =
-            (mapX - currentPlayer.posX + (1.0 - stepX) / 2.0) / rayDirX;
-      else
-        perpWallDist =
-            (mapY - currentPlayer.posY + (1.0 - stepY) / 2.0) / rayDirY;
-
-      zBuffer[x] = perpWallDist; // Store depth buffer
-    }
-
-    // Raycasting
-    for (int x = 0; x < SCREEN_WIDTH; x++) {
-      double cameraX = 2 * x / double(SCREEN_WIDTH) - 1;
-      double rayDirX = currentPlayer.dirX + currentPlayer.planeX * cameraX;
-      double rayDirY = currentPlayer.dirY + currentPlayer.planeY * cameraX;
-
-      int mapX = int(currentPlayer.posX);
-      int mapY = int(currentPlayer.posY);
-
-      double sideDistX, sideDistY;
-      double deltaDistX = std::abs(1 / rayDirX);
-      double deltaDistY = std::abs(1 / rayDirY);
-      double perpWallDist;
-
-      int stepX, stepY;
-      int hit = 0;
-      int side;
-
+      // Calculate step and initial sideDist
       if (rayDirX < 0) {
         stepX = -1;
         sideDistX = (currentPlayer.posX - mapX) * deltaDistX;
@@ -335,6 +279,8 @@ private:
           hit = 1;
       }
 
+      // Calculate distance to wall
+      double perpWallDist;
       if (side == 0)
         perpWallDist =
             (mapX - currentPlayer.posX + (1.0 - stepX) / 2.0) / rayDirX;
@@ -342,6 +288,10 @@ private:
         perpWallDist =
             (mapY - currentPlayer.posY + (1.0 - stepY) / 2.0) / rayDirY;
 
+      // Store in zBuffer for sprite rendering
+      zBuffer[x] = perpWallDist;
+
+      // Calculate wall height and drawing boundaries
       int lineHeight = (int)(SCREEN_HEIGHT / perpWallDist);
       int drawStart = -lineHeight / 2 + SCREEN_HEIGHT / 2;
       if (drawStart < 0)
@@ -349,7 +299,6 @@ private:
       int drawEnd = lineHeight / 2 + SCREEN_HEIGHT / 2;
       if (drawEnd >= SCREEN_HEIGHT)
         drawEnd = SCREEN_HEIGHT - 1;
-
       // Calculate texture coordinates
       double wallX;
       if (side == 0) {
