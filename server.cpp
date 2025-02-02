@@ -124,7 +124,6 @@ private:
           oldPlaneX * sin(rotAmount) + player.planeY * cos(rotAmount);
     }
 
-    // Handle rotation (no collision check needed)
     if (input.turnRight) {
       double oldDirX = player.dirX;
       player.dirX = player.dirX * cos(-rotSpeed) - player.dirY * sin(-rotSpeed);
@@ -202,7 +201,7 @@ public:
 
     // Initialize starting positions for players
     PlayerState p1;
-    p1.posX = 7.0;
+    p1.posX = 10.0;
     p1.posY = 7.0;
     // PlayerState p1;
     // p1.name = "Player 1";
@@ -213,7 +212,7 @@ public:
     p1.planeY = 0.66;
 
     PlayerState p2;
-    p2.posX = 14.0;
+    p2.posX = 20.0;
     p2.posY = 14.0;
     p2.isAdmin = false;
     p2.dirX = 1.0;

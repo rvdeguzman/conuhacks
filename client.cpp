@@ -48,11 +48,9 @@ private:
 
   void handleInput() {
     const Uint8 *state = SDL_GetKeyboardState(NULL);
-    if (state[SDL_SCANCODE_ESCAPE]) {
-      mouseGrabbed = false;
-      SDL_SetRelativeMouseMode(SDL_FALSE);
-    }
-    InputPacket input;
+    InputPacket input = {}; // Initialize all fields to zero/false
+
+    // Basic movement
     input.forward = state[SDL_SCANCODE_W];
     input.backward = state[SDL_SCANCODE_S];
     input.strafeLeft = state[SDL_SCANCODE_A];
@@ -60,58 +58,70 @@ private:
     input.turnLeft = state[SDL_SCANCODE_LEFT];
     input.turnRight = state[SDL_SCANCODE_RIGHT];
 
+    // Mouse grab toggle
     int mouseX, mouseY;
-    const Uint32 mouseState = SDL_GetMouseState(&mouseX, &mouseY);
-    if (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT) && !mouseGrabbed) {
+    Uint32 mouseState = SDL_GetMouseState(&mouseX, &mouseY);
+
+    if (state[SDL_SCANCODE_ESCAPE]) {
+      if (mouseGrabbed) {
+        mouseGrabbed = false;
+        SDL_SetRelativeMouseMode(SDL_FALSE);
+      } else {
+        isRunning = false;
+      }
+    }
+
+    // Mouse-look handling
+    if (!mouseGrabbed && (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT))) {
       mouseGrabbed = true;
       SDL_SetRelativeMouseMode(SDL_TRUE);
     }
-    int xrel, yrel;
-    SDL_GetRelativeMouseState(&xrel, &yrel);
 
     if (mouseGrabbed) {
+      int xrel, yrel;
+      SDL_GetRelativeMouseState(&xrel, &yrel);
       input.mouseRotation = xrel * MOUSE_SENSITIVITY;
     } else {
       input.mouseRotation = 0.0;
-      if (state[SDL_SCANCODE_ESCAPE]) {
-        std::cout << "exiting game" << std::endl;
-        isRunning = false;
-      }
+    }
 
-      // Handle weapon input
-      if (state[SDL_SCANCODE_SPACE] && !isShooting) {
-        isShooting = true;
-        lastShotTime = SDL_GetTicks();
-        isShooting = true;
-        lastShotTime = SDL_GetTicks();
+    // Send movement/rotation input to server
+    ENetPacket *packet = enet_packet_create(&input, sizeof(InputPacket),
+                                            ENET_PACKET_FLAG_RELIABLE);
+    enet_peer_send(server, 0, packet);
 
-        // Send shot attempt to server
-        ShotAttemptPacket shotPacket;
-        shotPacket.shooterID = playerID;
-        shotPacket.shooterPosX = players[playerID].posX;
-        shotPacket.shooterPosY = players[playerID].posY;
-        shotPacket.shooterDirX = players[playerID].dirX;
-        shotPacket.shooterDirY = players[playerID].dirY;
+    // Handle shooting as a completely separate system
+    static bool spaceWasPressed = false;
+    bool spaceIsPressed = state[SDL_SCANCODE_SPACE];
 
-        ENetPacket *packet = enet_packet_create(
-            &shotPacket, sizeof(ShotAttemptPacket), ENET_PACKET_FLAG_RELIABLE);
-        enet_peer_send(server, 0, packet);
-      }
+    // Only shoot on the initial press of spacebar
+    if (spaceIsPressed && !spaceWasPressed && !isShooting) {
+      isShooting = true;
+      lastShotTime = SDL_GetTicks();
 
-      // Weapon switching
-      if (state[SDL_SCANCODE_1])
-        currentWeapon = 0;
-      if (state[SDL_SCANCODE_2])
-        currentWeapon = 1;
-      if (state[SDL_SCANCODE_3])
-        currentWeapon = 2;
-      if (state[SDL_SCANCODE_4])
-        currentWeapon = 3;
+      // Send shot attempt to server
+      ShotAttemptPacket shotPacket;
+      shotPacket.shooterID = playerID;
+      shotPacket.shooterPosX = players[playerID].posX;
+      shotPacket.shooterPosY = players[playerID].posY;
+      shotPacket.shooterDirX = players[playerID].dirX;
+      shotPacket.shooterDirY = players[playerID].dirY;
 
-      ENetPacket *packet = enet_packet_create(&input, sizeof(InputPacket),
-                                              ENET_PACKET_FLAG_RELIABLE);
+      packet = enet_packet_create(&shotPacket, sizeof(ShotAttemptPacket),
+                                  ENET_PACKET_FLAG_RELIABLE);
       enet_peer_send(server, 0, packet);
     }
+    spaceWasPressed = spaceIsPressed;
+
+    // Handle weapon switching
+    if (state[SDL_SCANCODE_1])
+      currentWeapon = 0;
+    if (state[SDL_SCANCODE_2])
+      currentWeapon = 1;
+    if (state[SDL_SCANCODE_3])
+      currentWeapon = 2;
+    if (state[SDL_SCANCODE_4])
+      currentWeapon = 3;
   }
 
   void renderMinimap() {
@@ -619,6 +629,9 @@ public:
     Uint32 frameStart;
     int frameTime;
 
+    // Make sure gameState is initialized to MENU
+    gameState = MENU;
+
     while (isRunning) {
       frameStart = SDL_GetTicks();
 
@@ -626,6 +639,7 @@ public:
       SDL_Event e;
       while (SDL_PollEvent(&e)) {
         if (e.type == SDL_QUIT) {
+          std::cout << "Quit event received" << std::endl;
           isRunning = false;
           break;
         }
@@ -633,15 +647,29 @@ public:
         // Handle other events based on game state
         switch (gameState) {
         case MENU:
+          // Log all key events in menu
           if (e.type == SDL_KEYDOWN) {
-            SDL_Keycode key = e.key.keysym.sym;
-            if (key == ENTER_LOBBY_INPUT) {
+            std::cout << "Key pressed in menu: "
+                      << SDL_GetKeyName(e.key.keysym.sym) << std::endl;
+
+            if (e.key.keysym.sym == SDLK_RETURN) {
+              std::cout << "Enter key pressed - transitioning to lobby"
+                        << std::endl;
               gameState = LOBBY;
-              connect_client();
-              sendJoinRequest();
-              spawn_player();
-              std::cout << "Entered lobby!" << std::endl;
-            } else if (key == END_GAME_INPUT) {
+
+              // Initialize client connection
+              try {
+                connect_client();
+                sendJoinRequest();
+                spawn_player();
+                std::cout << "Successfully entered lobby!" << std::endl;
+              } catch (const std::runtime_error &e) {
+                std::cerr << "Failed to enter lobby: " << e.what() << std::endl;
+                // Handle error - maybe return to menu
+                gameState = MENU;
+              }
+            } else if (e.key.keysym.sym == SDLK_ESCAPE) {
+              std::cout << "Escape pressed - ending game" << std::endl;
               isRunning = false;
             }
           }
@@ -649,24 +677,30 @@ public:
 
         case LOBBY:
           if (e.type == SDL_KEYDOWN) {
-            SDL_Keycode key = e.key.keysym.sym;
-            if (key == START_GAME_INPUT) {
+            if (e.key.keysym.sym == SDLK_SPACE) {
+              std::cout << "Space pressed - starting game" << std::endl;
               gameState = PLAYING;
-            } else if (key == END_GAME_INPUT) {
+            } else if (e.key.keysym.sym == SDLK_ESCAPE) {
+              std::cout << "Escape pressed in lobby - ending game" << std::endl;
               isRunning = false;
             }
           }
           break;
 
         case PLAYING:
-          // Regular game input handling
           handleInput();
           break;
         }
       }
 
       // Process network events regardless of game state
-      processNetworkEvents();
+      if (client != nullptr) {
+        processNetworkEvents();
+      }
+
+      // Clear the screen before rendering
+      SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+      SDL_RenderClear(renderer);
 
       // Render based on current game state
       switch (gameState) {
@@ -704,34 +738,34 @@ public:
 
   void connect_client() {
     if (!client) {
-        std::cerr << "Error: Client not initialized!" << std::endl;
-        return;
+      std::cerr << "Error: Client not initialized!" << std::endl;
+      return;
     }
 
     std::cout << "Connecting to server..." << std::endl;
-    
+
     ENetAddress address;
     enet_address_set_host(&address, SERVER_HOST);
     address.port = SERVER_PORT;
 
     server = enet_host_connect(client, &address, 2, 0);
     if (!server) {
-        throw std::runtime_error("Failed to connect to server");
+      throw std::runtime_error("Failed to connect to server");
     }
 
     // Wait for connection success/failure
     ENetEvent event;
-    if (enet_host_service(client, &event, 5000) > 0 && 
+    if (enet_host_service(client, &event, 5000) > 0 &&
         event.type == ENET_EVENT_TYPE_CONNECT) {
-        std::cout << "Connection to server succeeded!" << std::endl;
+      std::cout << "Connection to server succeeded!" << std::endl;
     } else {
-        enet_peer_reset(server);
-        server = nullptr;
-        throw std::runtime_error("Connection to server failed!");
+      enet_peer_reset(server);
+      server = nullptr;
+      throw std::runtime_error("Connection to server failed!");
     }
 
     SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "1");
-}
+  }
 
   void spawn_player() {
     // client = enet_host_create(NULL, 1, 2, 0, 0);
@@ -828,6 +862,7 @@ public:
           // This is a position update (Player's position in the game)
           PositionPacket *pos = (PositionPacket *)event.packet->data;
           players[pos->playerID] = pos->state;
+
         } else if (event.packet->dataLength == sizeof(HitNotificationPacket)) {
           // std::cout << "packet 3" << std::endl;
           // This is a hit notification
@@ -867,7 +902,13 @@ public:
             gameState = PLAYING; // Switch to PLAYING state
           }
         }
-
+        if (event.packet->dataLength == sizeof(PositionPacket)) {
+          PositionPacket *pos = (PositionPacket *)event.packet->data;
+          std::cout << "Player " << (int)pos->playerID
+                    << " direction: " << pos->state.dirX << ", "
+                    << pos->state.dirY << std::endl;
+          players[pos->playerID] = pos->state;
+        }
         // Free the received packet after processing
         enet_packet_destroy(event.packet);
         break;
