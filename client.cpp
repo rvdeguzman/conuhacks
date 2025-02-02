@@ -1,3 +1,6 @@
+#include "GameState.h"
+#include "Lobby.h"
+#include "Menu.h"
 #include "SpriteSheet.h"
 #include "common.h"
 #include <SDL2/SDL.h>
@@ -11,8 +14,6 @@
 #include <iostream>
 #include <vector>
 
-const int SCREEN_WIDTH = 640;
-const int SCREEN_HEIGHT = 480;
 const char *SERVER_HOST = "127.0.0.1";
 // const char* SERVER_HOST = "192.168.163.247";
 const int SERVER_PORT = 1234;
@@ -29,6 +30,7 @@ private:
   SDL_Texture *playerTexture;
   const float MOUSE_SENSITIVITY = 0.0008f;
   bool mouseGrabbed = false;
+  GameState gameState;
 
   // Weapon state
   int currentWeapon = 0; // Current weapon type
@@ -71,41 +73,45 @@ private:
       input.mouseRotation = xrel * MOUSE_SENSITIVITY;
     } else {
       input.mouseRotation = 0.0;
-    }
+      if (state[SDL_SCANCODE_ESCAPE]) {
+        std::cout << "exiting game" << std::endl;
+        isRunning = false;
+      }
 
-    // Handle weapon input
-    if (state[SDL_SCANCODE_SPACE] && !isShooting) {
-      isShooting = true;
-      lastShotTime = SDL_GetTicks();
-      isShooting = true;
-      lastShotTime = SDL_GetTicks();
+      // Handle weapon input
+      if (state[SDL_SCANCODE_SPACE] && !isShooting) {
+        isShooting = true;
+        lastShotTime = SDL_GetTicks();
+        isShooting = true;
+        lastShotTime = SDL_GetTicks();
 
-      // Send shot attempt to server
-      ShotAttemptPacket shotPacket;
-      shotPacket.shooterID = playerID;
-      shotPacket.shooterPosX = players[playerID].posX;
-      shotPacket.shooterPosY = players[playerID].posY;
-      shotPacket.shooterDirX = players[playerID].dirX;
-      shotPacket.shooterDirY = players[playerID].dirY;
+        // Send shot attempt to server
+        ShotAttemptPacket shotPacket;
+        shotPacket.shooterID = playerID;
+        shotPacket.shooterPosX = players[playerID].posX;
+        shotPacket.shooterPosY = players[playerID].posY;
+        shotPacket.shooterDirX = players[playerID].dirX;
+        shotPacket.shooterDirY = players[playerID].dirY;
 
-      ENetPacket *packet = enet_packet_create(
-          &shotPacket, sizeof(ShotAttemptPacket), ENET_PACKET_FLAG_RELIABLE);
+        ENetPacket *packet = enet_packet_create(
+            &shotPacket, sizeof(ShotAttemptPacket), ENET_PACKET_FLAG_RELIABLE);
+        enet_peer_send(server, 0, packet);
+      }
+
+      // Weapon switching
+      if (state[SDL_SCANCODE_1])
+        currentWeapon = 0;
+      if (state[SDL_SCANCODE_2])
+        currentWeapon = 1;
+      if (state[SDL_SCANCODE_3])
+        currentWeapon = 2;
+      if (state[SDL_SCANCODE_4])
+        currentWeapon = 3;
+
+      ENetPacket *packet = enet_packet_create(&input, sizeof(InputPacket),
+                                              ENET_PACKET_FLAG_RELIABLE);
       enet_peer_send(server, 0, packet);
     }
-
-    // Weapon switching
-    if (state[SDL_SCANCODE_1])
-      currentWeapon = 0;
-    if (state[SDL_SCANCODE_2])
-      currentWeapon = 1;
-    if (state[SDL_SCANCODE_3])
-      currentWeapon = 2;
-    if (state[SDL_SCANCODE_4])
-      currentWeapon = 3;
-
-    ENetPacket *packet = enet_packet_create(&input, sizeof(InputPacket),
-                                            ENET_PACKET_FLAG_RELIABLE);
-    enet_peer_send(server, 0, packet);
   }
 
   void renderMinimap() {
@@ -436,7 +442,7 @@ private:
       double dotProduct =
           (otherDirX * cameraRightX) + (otherDirY * cameraRightY);
       bool shouldFlip =
-          dotProduct < 0; // ✅ Flip if looking left relative to us
+          dotProduct > 0; // ✅ Flip if looking left relative to us
 
       // ✅ Get the correct walking frame
       SDL_Rect srcRect =
@@ -548,7 +554,9 @@ private:
   }
 
 public:
-  GameClient() : isRunning(false) {
+  Lobby lobby;
+
+  GameClient() : isRunning(false), lobby(nullptr) {
     if (SDL_Init(SDL_INIT_VIDEO) < 0 || enet_initialize() != 0) {
       throw std::runtime_error("Failed to initialize SDL or ENet");
     }
@@ -578,12 +586,180 @@ public:
       std::cout << "SDL renderer created successfully!" << std::endl;
     }
 
-    client = enet_host_create(NULL, 1, 2, 0, 0);
-    if (!client) {
-      throw std::runtime_error("Failed to create ENet client");
-    }
+    lobby = Lobby(renderer);
 
-    SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "1");
+    // client = enet_host_create(NULL, 1, 2, 0, 0);
+    // if (!client) {
+    //   throw std::runtime_error("Failed to create ENet client");
+    // }
+
+    // ENetAddress address;
+    // enet_address_set_host(&address, SERVER_HOST);
+    // address.port = SERVER_PORT;
+
+    // server = enet_host_connect(client, &address, 2, 0);
+    // if (!server) {
+    //   throw std::runtime_error("Failed to connect to server");
+    // }
+
+    isRunning = true;
+
+    // playerSprite = loadSpriteSheet(renderer, "msgunner.info",
+    // "msgunner.bmp");
+
+    // if (playerSprite.texture == nullptr) {
+    //   std::cerr << "Error: Failed to load sprite sheet!" << std::endl;
+    // } else {
+    //   std::cout << "Sprite sheet loaded successfully!" << std::endl;
+    //   std::cout << "Sprite Info: " << playerSprite.cols << " cols, "
+    //             << playerSprite.rows << " rows, " << playerSprite.frameWidth
+    //             << "x" << playerSprite.frameWidth << std::endl;
+    // }
+
+    // // player weapon sprites (will be shown to the current player, so should
+    // act
+    // // as a ui element:)
+    // weaponSprite = loadSpriteSheet(renderer, "weapons.info", "weapons.bmp");
+
+    // // Initialize players vector with default states
+    // players.resize(2);
+    // playerID = 0; // Will be set properly when connecting to server
+
+    // // Load wall textures
+    // const char *textureFiles[NUM_TEXTURES] = {"wall1.png", "wall2.png",
+    //                                           "wall3.png", "wall4.png"};
+
+    // for (int i = 0; i < NUM_TEXTURES; i++) {
+    //   SDL_Surface *tempSurface = IMG_Load(textureFiles[i]);
+    //   if (!tempSurface) {
+    //     throw std::runtime_error("Failed to load wall texture: " +
+    //                              std::string(IMG_GetError()));
+    //   }
+    //   wallTextures[i] = SDL_CreateTextureFromSurface(renderer, tempSurface);
+    //   SDL_FreeSurface(tempSurface);
+    //   if (!wallTextures[i]) {
+    //     throw std::runtime_error("Failed to create wall texture: " +
+    //                              std::string(SDL_GetError()));
+    //   }
+    // }
+
+    // // Load player texture
+    // SDL_Surface *tempSurface = IMG_Load("player_texture.png");
+    // if (!tempSurface) {
+    //   throw std::runtime_error("Failed to load player texture: " +
+    //                            std::string(IMG_GetError()));
+    // }
+    // playerTexture = SDL_CreateTextureFromSurface(renderer, tempSurface);
+    // if (!playerTexture) {
+    //   std::cerr << "Failed to create player texture: " << SDL_GetError()
+    //             << std::endl;
+    //   return;
+    // } else {
+    //   std::cout << "Player texture loaded successfully!" << std::endl;
+    // }
+
+    // // Load player texture
+    // SDL_Surface* tempSurface = IMG_Load("player_texture.png");
+    // if (!tempSurface) {
+    //     throw std::runtime_error("Failed to load player texture: " +
+    //     std::string(IMG_GetError()));
+    // }
+    // playerTexture = SDL_CreateTextureFromSurface(renderer, tempSurface);
+    // if (!playerTexture) {
+    //     std::cerr << "Failed to create player texture: " << SDL_GetError() <<
+    //     std::endl; return;
+    // } else {
+    //     std::cout << "Player texture loaded successfully!" << std::endl;
+    // }
+
+    // SDL_FreeSurface(tempSurface);
+  }
+
+  // void updateLobby(std::vector<PlayerState> players);
+
+  void run() {
+    Menu menu(renderer);
+    Lobby lobby(renderer);
+
+    while (isRunning) {
+      if (gameState == MENU) {
+        SDL_Keycode menuInput = menu.handleInput();
+        if (menuInput == ENTER_LOBBY_INPUT) {
+          gameState = LOBBY;
+          connect_client();
+          sendJoinRequest();
+          spawn_player();
+          std::cout << "Entered lobby!" << std::endl;
+        }
+        if (menuInput == END_GAME_INPUT) {
+          std::cout << "Game ended!" << std::endl;
+          isRunning = false;
+          break;
+        }
+        menu.render();
+      } else if (gameState == LOBBY) {
+        SDL_Keycode lobbyInput = lobby.handleInput();
+
+        if (lobbyInput == START_GAME_INPUT) {
+          gameState = PLAYING;
+          // connect_client();
+          // sendJoinRequest();
+          // std::cout << "Entered lobby!" << std::endl;
+        }
+        if (lobbyInput == END_GAME_INPUT) {
+          std::cout << "Game ended!" << std::endl;
+          isRunning = false;
+          break;
+        }
+        processNetworkEvents();
+        lobby.render();
+      } else if (gameState == PLAYING) {
+        // spawn_player();
+
+        SDL_Event e;
+        const int FPS = 60;
+        const int FRAME_DELAY = 1000 / FPS;
+        Uint32 frameStart;
+        int frameTime;
+
+        while (isRunning) {
+          frameStart = SDL_GetTicks();
+          while (SDL_PollEvent(&e)) {
+            if (e.type == END_GAME_INPUT) {
+              isRunning = false;
+            }
+          }
+
+          handleInput();
+          processNetworkEvents();
+          render();
+
+          frameTime = SDL_GetTicks() - frameStart;
+          if (FRAME_DELAY > frameTime) {
+            SDL_Delay(FRAME_DELAY - frameTime);
+          }
+        }
+      }
+    }
+  }
+
+  void sendJoinRequest() {
+    if (!server)
+      return;
+
+    std::cout << "sendjoinrequest packet" << std::endl;
+    ENetPacket *packet =
+        enet_packet_create("JOIN", 5, ENET_PACKET_FLAG_RELIABLE);
+    enet_peer_send(server, 0, packet); // Send packet to the server
+  }
+
+  void connect_client() {
+    // Initialize ENet
+    std::cout << "Initializing ENet..." << std::endl;
+    if (enet_initialize() != 0) {
+      std::cerr << "ENet initialization failed!" << std::endl;
+      throw std::runtime_error("Failed to initialize ENet");
+    }
 
     ENetAddress address;
     enet_address_set_host(&address, SERVER_HOST);
@@ -593,6 +769,22 @@ public:
     if (!server) {
       throw std::runtime_error("Failed to connect to server");
     }
+  }
+
+  void spawn_player() {
+    // client = enet_host_create(NULL, 1, 2, 0, 0);
+    // if (!client) {
+    //   throw std::runtime_error("Failed to create ENet client");
+    // }
+
+    // ENetAddress address;
+    // enet_address_set_host(&address, SERVER_HOST);
+    // address.port = SERVER_PORT;
+
+    // server = enet_host_connect(client, &address, 2, 0);
+    // if (!server) {
+    //   throw std::runtime_error("Failed to connect to server");
+    // }
 
     playerSprite = loadSpriteSheet(renderer, "msgunner.info", "msgunner.bmp");
 
@@ -611,8 +803,8 @@ public:
 
     // Initialize players vector with default states
     players.resize(2);
+    // player_count += 1;
     playerID = 0; // Will be set properly when connecting to server
-    isRunning = true;
 
     // Load wall textures
     const char *textureFiles[NUM_TEXTURES] = {"wall1.png", "wall2.png",
@@ -646,85 +838,84 @@ public:
     } else {
       std::cout << "Player texture loaded successfully!" << std::endl;
     }
-
-    // // Load player texture
-    // SDL_Surface* tempSurface = IMG_Load("player_texture.png");
-    // if (!tempSurface) {
-    //     throw std::runtime_error("Failed to load player texture: " +
-    //     std::string(IMG_GetError()));
-    // }
-    // playerTexture = SDL_CreateTextureFromSurface(renderer, tempSurface);
-    // if (!playerTexture) {
-    //     std::cerr << "Failed to create player texture: " << SDL_GetError() <<
-    //     std::endl; return;
-    // } else {
-    //     std::cout << "Player texture loaded successfully!" << std::endl;
-    // }
-
-    // SDL_FreeSurface(tempSurface);
   }
+  void processNetworkEvents() {
+    if (!client) {
+      std::cerr << "Error: ENet client host is not initialized!" << std::endl;
+      return;
+    }
 
-  void run() {
-    SDL_Event e;
-    const int FPS = 60;
-    const int FRAME_DELAY = 1000 / FPS;
-    Uint32 frameStart;
-    int frameTime;
-
-    while (isRunning) {
-      frameStart = SDL_GetTicks();
-      while (SDL_PollEvent(&e)) {
-        if (e.type == SDL_QUIT) {
-          isRunning = false;
-        }
+    ENetEvent event;
+    while (enet_host_service(client, &event, 0) > 0) {
+      // std::cerr << "new packet" << std::endl;
+      if (event.packet == nullptr) {
+        std::cerr << "Error: Received event with null packet!" << std::endl;
+        continue;
       }
 
-      handleInput();
-
-      ENetEvent event;
-      while (enet_host_service(client, &event, 0) > 0) {
-        switch (event.type) {
-        case ENET_EVENT_TYPE_RECEIVE: {
-          if (event.packet->dataLength == sizeof(uint8_t)) {
-            // This is the initial player ID assignment
-            playerID = *(uint8_t *)event.packet->data;
-            std::cout << "Assigned player ID: " << (int)playerID << std::endl;
-          } else if (event.packet->dataLength == sizeof(PositionPacket)) {
-            // This is a position update
-            PositionPacket *pos = (PositionPacket *)event.packet->data;
-            players[pos->playerID] = pos->state;
-          } else if (event.packet->dataLength ==
-                     sizeof(HitNotificationPacket)) {
-            // This is a hit notification
-            HitNotificationPacket *hit =
-                (HitNotificationPacket *)event.packet->data;
-            if (hit->targetID == playerID) {
-              std::cout << "You were hit by player " << hit->shooterID << "!"
-                        << std::endl;
-              // Here you can add visual/audio feedback for being hit
-            } else if (hit->shooterID == playerID) {
-              std::cout << "You hit player " << hit->targetID << "!"
-                        << std::endl;
-              // Here you can add visual/audio feedback for successful hit
-            }
+      switch (event.type) {
+      // Handle receiving data from the server
+      case ENET_EVENT_TYPE_RECEIVE: {
+        if (event.packet->dataLength == sizeof(uint8_t)) {
+          // std::cout << "packet 1" << std::endl;
+          // This is the initial player ID assignment
+          playerID = *(uint8_t *)event.packet->data;
+          std::cout << "Assigned player ID: " << (int)playerID << std::endl;
+        } else if (event.packet->dataLength == sizeof(PositionPacket)) {
+          // std::cout << "packet 2" << std::endl;
+          // This is a position update (Player's position in the game)
+          PositionPacket *pos = (PositionPacket *)event.packet->data;
+          players[pos->playerID] = pos->state;
+        } else if (event.packet->dataLength == sizeof(HitNotificationPacket)) {
+          // std::cout << "packet 3" << std::endl;
+          // This is a hit notification
+          HitNotificationPacket *hit =
+              (HitNotificationPacket *)event.packet->data;
+          if (hit->targetID == playerID) {
+            std::cout << "You were hit by player " << hit->shooterID << "!"
+                      << std::endl;
+          } else if (hit->shooterID == playerID) {
+            std::cout << "You hit player " << hit->targetID << "!" << std::endl;
           }
-          enet_packet_destroy(event.packet);
-          break;
+        } else if (event.packet->dataLength == sizeof(LobbyUpdatePacket)) {
+          // std::cout << "packet 4" << std::endl;
+          if (event.packet->dataLength == sizeof(LobbyUpdatePacket)) {
+            LobbyUpdatePacket *lobbyUpdate =
+                (LobbyUpdatePacket *)event.packet->data;
+
+            std::cout << "Received Lobby Update Packet - Players: "
+                      << (int)lobbyUpdate->numPlayers << std::endl;
+
+            std::vector<PlayerState> playersInLobby;
+            for (size_t i = 0; i < lobbyUpdate->numPlayers; i++) {
+              playersInLobby.push_back(lobbyUpdate->players[i]);
+            }
+
+            lobby.updatePlayerList(playersInLobby);
+
+            // updateLobby(playersInLobby);
+          }
+
+        } else if (event.packet->dataLength == sizeof(GameStartPacket)) {
+          std::cout << "packet 5" << std::endl;
+          // This is the "start game" signal from the admin
+          GameStartPacket *startPacket = (GameStartPacket *)event.packet->data;
+          if (startPacket->startGame) {
+            std::cout << "Game has started!" << std::endl;
+            gameState = PLAYING; // Switch to PLAYING state
+          }
         }
-        case ENET_EVENT_TYPE_DISCONNECT:
-          std::cout << "Disconnected from server" << std::endl;
-          isRunning = false;
-          break;
-        default:
-          break;
-        }
+
+        // Free the received packet after processing
+        enet_packet_destroy(event.packet);
+        break;
       }
-
-      render();
-
-      frameTime = SDL_GetTicks() - frameStart;
-      if (FRAME_DELAY > frameTime) {
-        SDL_Delay(FRAME_DELAY - frameTime);
+      case ENET_EVENT_TYPE_DISCONNECT:
+        std::cout << "Disconnected from server" << std::endl;
+        isRunning = false; // Stop running if disconnected
+        break;
+      default:
+        break;
       }
     }
   }
@@ -742,23 +933,32 @@ public:
       playerSprite.texture = nullptr;
     }
 
-    enet_peer_disconnect(server, 0);
+    if (server) { // ✅ Ensure `server` is valid before disconnecting
+      enet_peer_disconnect(server, 0);
+      enet_peer_reset(server);
+      server = nullptr; // ✅ Prevent double-free issues
+    }
 
-    ENetEvent event;
-    while (enet_host_service(client, &event, 3000) > 0) {
-      switch (event.type) {
-      case ENET_EVENT_TYPE_RECEIVE:
-        enet_packet_destroy(event.packet);
-        break;
-      case ENET_EVENT_TYPE_DISCONNECT:
-        std::cout << "Disconnection succeeded." << std::endl;
-        goto cleanup;
-      default:
-        break;
+    if (client) {
+      ENetEvent event;
+      while (enet_host_service(client, &event, 3000) > 0) {
+        switch (event.type) {
+        case ENET_EVENT_TYPE_RECEIVE:
+          enet_packet_destroy(event.packet);
+          break;
+        case ENET_EVENT_TYPE_DISCONNECT:
+          std::cout << "Disconnection succeeded." << std::endl;
+          goto cleanup;
+        default:
+          break;
+        }
       }
     }
   cleanup:
-    enet_host_destroy(client);
+    if (client) {
+      enet_host_destroy(client);
+      client = nullptr;
+    }
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     IMG_Quit(); // ✅ Properly quit SDL2_Image
@@ -767,13 +967,33 @@ public:
   }
 };
 
-int main(int argc, char *args[]) {
-  try {
-    GameClient client;
-    client.run();
-  } catch (const std::exception &e) {
-    std::cerr << "Error: " << e.what() << std::endl;
-    return 1;
+// void GameClient::updateLobby(std::vector<PlayerState> playersInLobby) {
+//     // players = playersInLobby;  // Update the player list in the lobby
+
+//     // Print out the player names (or update the UI with the list of players)
+//     std::cout << "Current players in lobby:" << std::endl;
+//     for (const auto& player : playersInLobby) {
+//         std::cout << player.name << std::endl;
+//     }
+// }
+
+int main() {
+  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    std::cerr << "SDL Initialization failed: " << SDL_GetError() << std::endl;
+    return -1;
   }
+
+  if (TTF_Init() == -1) {
+    std::cerr << "SDL_ttf Initialization failed: " << TTF_GetError()
+              << std::endl;
+    return -1;
+  }
+
+  GameClient client;
+  client.run();
+
+  // Cleanup
+  TTF_Quit();
+  SDL_Quit();
   return 0;
 }
