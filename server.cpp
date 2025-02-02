@@ -145,7 +145,6 @@ private:
 
     // Handle movement with collision detection
     if (input.forward) {
-      std::cout << "moving forward" << std::endl;
       newX = player.posX + player.dirX * moveSpeed;
       newY = player.posY + player.dirY * moveSpeed;
     }
