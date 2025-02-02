@@ -18,9 +18,9 @@ private:
   void updatePlayerState(size_t playerIndex, const InputPacket &input) {
     PlayerState &player = players[playerIndex];
 
-        double prevX = player.posX;
-        double prevY = player.posY;
-        
+    double prevX = player.posX;
+    double prevY = player.posY;
+
     // Calculate delta time in seconds
     double currentTime = enet_time_get() / 1000.0; // Convert to seconds
     double deltaTime = currentTime - lastTime;
@@ -60,8 +60,9 @@ private:
           player.planeX * cos(rotSpeed) - player.planeY * sin(rotSpeed);
       player.planeY = oldPlaneX * sin(rotSpeed) + player.planeY * cos(rotSpeed);
     }
-if (input.strafeRight) {
-      // Move perpendicular to direction vector (rotated 90 degrees counterclockwise)
+    if (input.strafeRight) {
+      // Move perpendicular to direction vector (rotated 90 degrees
+      // counterclockwise)
       player.posX += player.dirY * moveSpeed;
       player.posY -= player.dirX * moveSpeed;
     }
@@ -70,8 +71,7 @@ if (input.strafeRight) {
       player.posX -= player.dirY * moveSpeed;
       player.posY += player.dirX * moveSpeed;
     }
-            player.isMoving = (player.posX != prevX || player.posY != prevY);
-
+    player.isMoving = (player.posX != prevX || player.posY != prevY);
   }
 
 public:
@@ -135,8 +135,8 @@ public:
     double dotProduct =
         normalizedDirX * normalizedDx + normalizedDirY * normalizedDy;
 
-    // Check if target is within 30-degree cone (cos(30°) ≈ 0.866)
-    return dotProduct > 0.866;
+    // within 10 degrees of center (cos(10°) ≈ 0.984)
+    return dotProduct > 0.984;
   }
 
   void handleShot(const ShotAttemptPacket &shotPacket,
