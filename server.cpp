@@ -12,35 +12,103 @@ private:
   ENetHost *server;
   std::vector<ENetPeer *> clients;
   std::vector<PlayerState> players;
-
+  const double PLAYER_RADIUS = 0.2; // Collision radius for players
+  const double WALL_BUFFER = 0.1;   // Extra buffer space from walls
   double lastTime;
+
+  bool checkCollision(double x, double y, size_t currentPlayerIndex) {
+    // Check map boundaries
+    if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) {
+      return true;
+    }
+
+    // Check the 4 cells around the player's position (including buffer)
+    int minX = static_cast<int>(x - PLAYER_RADIUS - WALL_BUFFER);
+    int maxX = static_cast<int>(x + PLAYER_RADIUS + WALL_BUFFER);
+    int minY = static_cast<int>(y - PLAYER_RADIUS - WALL_BUFFER);
+    int maxY = static_cast<int>(y + PLAYER_RADIUS + WALL_BUFFER);
+
+    // Clamp to map boundaries
+    minX = std::max(0, minX);
+    maxX = std::min(MAP_WIDTH - 1, maxX);
+    minY = std::max(0, minY);
+    maxY = std::min(MAP_HEIGHT - 1, maxY);
+
+    // Check each cell in the area
+    for (int checkX = minX; checkX <= maxX; checkX++) {
+      for (int checkY = minY; checkY <= maxY; checkY++) {
+        if (worldMap[checkX][checkY] > 0) { // If there's a wall
+          // Calculate detailed collision with wall boundaries
+          double wallMinX = checkX;
+          double wallMaxX = checkX + 1.0;
+          double wallMinY = checkY;
+          double wallMaxY = checkY + 1.0;
+
+          // Check if player's collision circle intersects with wall square
+          double closestX = std::max(wallMinX, std::min(wallMaxX, x));
+          double closestY = std::max(wallMinY, std::min(wallMaxY, y));
+
+          double distanceX = x - closestX;
+          double distanceY = y - closestY;
+          double distanceSquared =
+              (distanceX * distanceX) + (distanceY * distanceY);
+
+          if (distanceSquared <
+              (PLAYER_RADIUS + WALL_BUFFER) * (PLAYER_RADIUS + WALL_BUFFER)) {
+            std::cout << "collision rnnn" << std::endl;
+            return true; // Collision detected
+          }
+        }
+      }
+    }
+
+    // Check collision with other players
+    for (size_t i = 0; i < players.size(); i++) {
+      // Skip checking collision with self
+      if (i == currentPlayerIndex)
+        continue;
+
+      const PlayerState &otherPlayer = players[i];
+
+      // Quick AABB check first for performance
+      if (std::abs(otherPlayer.posX - x) < PLAYER_RADIUS * 2 &&
+          std::abs(otherPlayer.posY - y) < PLAYER_RADIUS * 2) {
+
+        // More precise circle collision check
+        double dx = otherPlayer.posX - x;
+        double dy = otherPlayer.posY - y;
+        double distanceSquared = dx * dx + dy * dy;
+
+        if (distanceSquared < (PLAYER_RADIUS * 2) * (PLAYER_RADIUS * 2)) {
+          return true; // Player collision detected
+        }
+      }
+    }
+
+    return false; // No collision
+  }
 
   void updatePlayerState(size_t playerIndex, const InputPacket &input) {
     PlayerState &player = players[playerIndex];
-
     double prevX = player.posX;
     double prevY = player.posY;
 
     // Calculate delta time in seconds
-    double currentTime = enet_time_get() / 1000.0; // Convert to seconds
+    double currentTime = enet_time_get() / 1000.0;
     double deltaTime = currentTime - lastTime;
     lastTime = currentTime;
 
-    const double BASE_MOVE_SPEED = 6.0; // Units per second
-    const double BASE_ROT_SPEED = 3.0;  // Radians per second
+    const double BASE_MOVE_SPEED = 6.0;
+    const double BASE_ROT_SPEED = 3.0;
 
-    // Apply delta time to make movement frame-rate independent
     const double moveSpeed = BASE_MOVE_SPEED * deltaTime;
     const double rotSpeed = BASE_ROT_SPEED * deltaTime;
 
-    if (input.forward) {
-      player.posX += player.dirX * moveSpeed;
-      player.posY += player.dirY * moveSpeed;
-    }
-    if (input.backward) {
-      player.posX -= player.dirX * moveSpeed;
-      player.posY -= player.dirY * moveSpeed;
-    }
+    // Store original position for collision resolution
+    double newX = player.posX;
+    double newY = player.posY;
+
+    // Handle rotation (no collision check needed)
     if (input.turnRight) {
       double oldDirX = player.dirX;
       player.dirX = player.dirX * cos(-rotSpeed) - player.dirY * sin(-rotSpeed);
@@ -60,16 +128,42 @@ private:
           player.planeX * cos(rotSpeed) - player.planeY * sin(rotSpeed);
       player.planeY = oldPlaneX * sin(rotSpeed) + player.planeY * cos(rotSpeed);
     }
+
+    // Handle movement with collision detection
+    if (input.forward) {
+      std::cout << "moving forward" << std::endl;
+      newX = player.posX + player.dirX * moveSpeed;
+      newY = player.posY + player.dirY * moveSpeed;
+    }
+    if (input.backward) {
+      newX = player.posX - player.dirX * moveSpeed;
+      newY = player.posY - player.dirY * moveSpeed;
+    }
     if (input.strafeRight) {
-      // Move perpendicular to direction vector (rotated 90 degrees
-      // counterclockwise)
-      player.posX += player.dirY * moveSpeed;
-      player.posY -= player.dirX * moveSpeed;
+      newX = player.posX + player.dirY * moveSpeed;
+      newY = player.posY - player.dirX * moveSpeed;
     }
     if (input.strafeLeft) {
-      // Move perpendicular to direction vector (rotated 90 degrees clockwise)
-      player.posX -= player.dirY * moveSpeed;
-      player.posY += player.dirX * moveSpeed;
+      newX = player.posX - player.dirY * moveSpeed;
+      newY = player.posY + player.dirX * moveSpeed;
+    }
+
+    // Try to move with collision detection
+    // First try the full movement
+    if (!checkCollision(newX, newY, playerIndex)) {
+      player.posX = newX;
+      player.posY = newY;
+    } else {
+      // If collision, try moving along X axis only
+      if (!checkCollision(newX, player.posY, playerIndex)) {
+        player.posX = newX;
+      }
+      // Try moving along Y axis only
+      else if (!checkCollision(player.posX, newY, playerIndex)) {
+        player.posY = newY;
+      }
+      // If both failed, player stays in current position
+      std::cout << "player collision" << std::endl;
     }
     player.isMoving = (player.posX != prevX || player.posY != prevY);
   }
@@ -93,16 +187,16 @@ public:
 
     // Initialize starting positions for players
     PlayerState p1;
-    p1.posX = 2.0;
-    p1.posY = 2.0;
+    p1.posX = 7.0;
+    p1.posY = 7.0;
     p1.dirX = -1.0;
     p1.dirY = 0.0;
     p1.planeX = 0.0;
     p1.planeY = 0.66;
 
     PlayerState p2;
-    p2.posX = 6.0;
-    p2.posY = 6.0;
+    p2.posX = 20.0;
+    p2.posY = 20.0;
     p2.dirX = 1.0;
     p2.dirY = 0.0;
     p2.planeX = 0.0;
@@ -111,102 +205,108 @@ public:
     players.push_back(p2);
   }
 
-bool hasWallBetweenPoints(double startX, double startY, double endX, double endY) {
+  bool hasWallBetweenPoints(double startX, double startY, double endX,
+                            double endY) {
     // Implementation of Digital Differential Analyzer (DDA) algorithm
     double dirX = endX - startX;
     double dirY = endY - startY;
     double distance = sqrt(dirX * dirX + dirY * dirY);
-    
+
     // Normalize direction vector
     dirX /= distance;
     dirY /= distance;
-    
+
     // Starting map cell
     int mapX = int(startX);
     int mapY = int(startY);
-    
+
     // Length of ray from one x or y-side to next x or y-side
     double deltaDistX = std::abs(1.0 / dirX);
     double deltaDistY = std::abs(1.0 / dirY);
-    
+
     // Calculate step and initial sideDist
     double sideDistX, sideDistY;
     int stepX, stepY;
-    
+
     if (dirX < 0) {
-        stepX = -1;
-        sideDistX = (startX - mapX) * deltaDistX;
+      stepX = -1;
+      sideDistX = (startX - mapX) * deltaDistX;
     } else {
-        stepX = 1;
-        sideDistX = (mapX + 1.0 - startX) * deltaDistX;
+      stepX = 1;
+      sideDistX = (mapX + 1.0 - startX) * deltaDistX;
     }
-    
+
     if (dirY < 0) {
-        stepY = -1;
-        sideDistY = (startY - mapY) * deltaDistY;
+      stepY = -1;
+      sideDistY = (startY - mapY) * deltaDistY;
     } else {
-        stepY = 1;
-        sideDistY = (mapY + 1.0 - startY) * deltaDistY;
+      stepY = 1;
+      sideDistY = (mapY + 1.0 - startY) * deltaDistY;
     }
-    
+
     // Perform DDA
     double rayLength = 0.0;
     while (rayLength < distance) {
-        // Jump to next map square
-        if (sideDistX < sideDistY) {
-            rayLength = sideDistX;
-            sideDistX += deltaDistX;
-            mapX += stepX;
-        } else {
-            rayLength = sideDistY;
-            sideDistY += deltaDistY;
-            mapY += stepY;
-        }
-        
-        // Check if ray has hit a wall
-        if (mapX < 0 || mapX >= MAP_WIDTH || mapY < 0 || mapY >= MAP_HEIGHT) {
-            return true; // Hit map boundary
-        }
-        
-        if (worldMap[mapX][mapY] > 0) {
-            return true; // Hit a wall
-        }
-    }
-    
-    return false; // No walls between points
-}
+      // Jump to next map square
+      if (sideDistX < sideDistY) {
+        rayLength = sideDistX;
+        sideDistX += deltaDistX;
+        mapX += stepX;
+      } else {
+        rayLength = sideDistY;
+        sideDistY += deltaDistY;
+        mapY += stepY;
+      }
 
-bool isPlayerHit(const PlayerState &shooter, const PlayerState &target) {
+      // Check if ray has hit a wall
+      if (mapX < 0 || mapX >= MAP_WIDTH || mapY < 0 || mapY >= MAP_HEIGHT) {
+        return true; // Hit map boundary
+      }
+
+      if (worldMap[mapX][mapY] > 0) {
+        return true; // Hit a wall
+      }
+    }
+
+    return false; // No walls between points
+  }
+
+  bool isPlayerHit(const PlayerState &shooter, const PlayerState &target) {
     // Calculate vector from shooter to target
     double dx = target.posX - shooter.posX;
     double dy = target.posY - shooter.posY;
-    
+
     // Calculate distance
     double distance = sqrt(dx * dx + dy * dy);
-    if (distance > 8.0) return false; // Maximum shooting distance
-    
+    if (distance > 8.0)
+      return false; // Maximum shooting distance
+
     // Normalize the direction vector
-    double dirLength = sqrt(shooter.dirX * shooter.dirX + shooter.dirY * shooter.dirY);
+    double dirLength =
+        sqrt(shooter.dirX * shooter.dirX + shooter.dirY * shooter.dirY);
     double normalizedDirX = shooter.dirX / dirLength;
     double normalizedDirY = shooter.dirY / dirLength;
-    
+
     // Normalize the vector to target
     double normalizedDx = dx / distance;
     double normalizedDy = dy / distance;
-    
+
     // Calculate dot product to get cosine of angle
-    double dotProduct = normalizedDirX * normalizedDx + normalizedDirY * normalizedDy;
-    
+    double dotProduct =
+        normalizedDirX * normalizedDx + normalizedDirY * normalizedDy;
+
     // Check if target is within shooting angle (within 10 degrees of center)
-    if (dotProduct <= 0.984) return false; // cos(10°) ≈ 0.984
-    
+    if (dotProduct <= 0.984)
+      return false; // cos(10°) ≈ 0.984
+
     // Check if there's a wall between shooter and target
-    if (hasWallBetweenPoints(shooter.posX, shooter.posY, target.posX, target.posY)) {
-        return false; // Can't shoot through walls
+    if (hasWallBetweenPoints(shooter.posX, shooter.posY, target.posX,
+                             target.posY)) {
+      return false; // Can't shoot through walls
     }
-    
+
     return true;
-}
+  }
 
   void handleShot(const ShotAttemptPacket &shotPacket,
                   std::vector<PlayerState> &players) {
