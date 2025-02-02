@@ -2,6 +2,7 @@
 #include "common.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_mouse.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_timer.h>
 #include <algorithm>
@@ -26,6 +27,8 @@ private:
   size_t playerID;
   bool isRunning;
   SDL_Texture *playerTexture;
+  const float MOUSE_SENSITIVITY = 0.0008f;
+  bool mouseGrabbed = false;
 
   // Weapon state
   int currentWeapon = 0; // Current weapon type
@@ -43,7 +46,10 @@ private:
 
   void handleInput() {
     const Uint8 *state = SDL_GetKeyboardState(NULL);
-
+    if (state[SDL_SCANCODE_ESCAPE]) {
+      mouseGrabbed = false;
+      SDL_SetRelativeMouseMode(SDL_FALSE);
+    }
     InputPacket input;
     input.forward = state[SDL_SCANCODE_W];
     input.backward = state[SDL_SCANCODE_S];
@@ -51,6 +57,21 @@ private:
     input.strafeRight = state[SDL_SCANCODE_D];
     input.turnLeft = state[SDL_SCANCODE_LEFT];
     input.turnRight = state[SDL_SCANCODE_RIGHT];
+
+    int mouseX, mouseY;
+    const Uint32 mouseState = SDL_GetMouseState(&mouseX, &mouseY);
+    if (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT) && !mouseGrabbed) {
+      mouseGrabbed = true;
+      SDL_SetRelativeMouseMode(SDL_TRUE);
+    }
+    int xrel, yrel;
+    SDL_GetRelativeMouseState(&xrel, &yrel);
+
+    if (mouseGrabbed) {
+      input.mouseRotation = xrel * MOUSE_SENSITIVITY;
+    } else {
+      input.mouseRotation = 0.0;
+    }
 
     // Handle weapon input
     if (state[SDL_SCANCODE_SPACE] && !isShooting) {
@@ -87,85 +108,91 @@ private:
     enet_peer_send(server, 0, packet);
   }
 
-void renderMinimap() {
-    const int MINIMAP_SIZE = 150;  // Size of the minimap in pixels
-    const int MINIMAP_X = SCREEN_WIDTH - MINIMAP_SIZE - 10;  // Position from right
-    const int MINIMAP_Y = 10;  // Position from top
-    const int CELL_SIZE = MINIMAP_SIZE / MAP_WIDTH;  // Size of each map cell
-    const int PLAYER_DOT_SIZE = 4;  // Size of player dots on minimap
-    const int DIRECTION_LINE_LENGTH = 8;  // Length of direction indicator
+  void renderMinimap() {
+    const int MINIMAP_SIZE = 150; // Size of the minimap in pixels
+    const int MINIMAP_X =
+        SCREEN_WIDTH - MINIMAP_SIZE - 10;           // Position from right
+    const int MINIMAP_Y = 10;                       // Position from top
+    const int CELL_SIZE = MINIMAP_SIZE / MAP_WIDTH; // Size of each map cell
+    const int PLAYER_DOT_SIZE = 4;       // Size of player dots on minimap
+    const int DIRECTION_LINE_LENGTH = 8; // Length of direction indicator
 
     // Draw minimap background
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 192);  // Semi-transparent black
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 192); // Semi-transparent black
     SDL_Rect minimapBG = {MINIMAP_X, MINIMAP_Y, MINIMAP_SIZE, MINIMAP_SIZE};
     SDL_RenderFillRect(renderer, &minimapBG);
 
     // Draw walls
     for (int y = 0; y < MAP_HEIGHT; y++) {
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            if (worldMap[x][y] > 0) {
-                // Choose color based on wall type
-                switch(worldMap[x][y]) {
-                    case 1: SDL_SetRenderDrawColor(renderer, 192, 192, 192, 255); break;  // Gray
-                    case 2: SDL_SetRenderDrawColor(renderer, 192, 0, 0, 255); break;      // Red
-                    case 3: SDL_SetRenderDrawColor(renderer, 0, 192, 0, 255); break;      // Green
-                    case 4: SDL_SetRenderDrawColor(renderer, 0, 0, 192, 255); break;      // Blue
-                    default: SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);        // White
-                }
+      for (int x = 0; x < MAP_WIDTH; x++) {
+        if (worldMap[x][y] > 0) {
+          // Choose color based on wall type
+          switch (worldMap[x][y]) {
+          case 1:
+            SDL_SetRenderDrawColor(renderer, 192, 192, 192, 255);
+            break; // Gray
+          case 2:
+            SDL_SetRenderDrawColor(renderer, 192, 0, 0, 255);
+            break; // Red
+          case 3:
+            SDL_SetRenderDrawColor(renderer, 0, 192, 0, 255);
+            break; // Green
+          case 4:
+            SDL_SetRenderDrawColor(renderer, 0, 0, 192, 255);
+            break; // Blue
+          default:
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White
+          }
 
-                SDL_Rect wallRect = {
-                    MINIMAP_X + (x * CELL_SIZE),
-                    MINIMAP_Y + (y * CELL_SIZE),
-                    CELL_SIZE,
-                    CELL_SIZE
-                };
-                SDL_RenderFillRect(renderer, &wallRect);
-            }
+          SDL_Rect wallRect = {MINIMAP_X + (x * CELL_SIZE),
+                               MINIMAP_Y + (y * CELL_SIZE), CELL_SIZE,
+                               CELL_SIZE};
+          SDL_RenderFillRect(renderer, &wallRect);
         }
+      }
     }
 
     // Draw players
     for (size_t i = 0; i < players.size(); i++) {
-        const PlayerState& player = players[i];
-        
-        // Calculate player position on minimap
-        int playerMinimapX = MINIMAP_X + static_cast<int>(player.posX * CELL_SIZE);
-        int playerMinimapY = MINIMAP_Y + static_cast<int>(player.posY * CELL_SIZE);
+      const PlayerState &player = players[i];
 
-        // Draw player dot
-        if (i == playerID) {
-            // Current player in yellow
-            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
-        } else {
-            // Other players in red
-            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        }
+      // Calculate player position on minimap
+      int playerMinimapX =
+          MINIMAP_X + static_cast<int>(player.posX * CELL_SIZE);
+      int playerMinimapY =
+          MINIMAP_Y + static_cast<int>(player.posY * CELL_SIZE);
 
-        SDL_Rect playerRect = {
-            playerMinimapX - PLAYER_DOT_SIZE/2,
-            playerMinimapY - PLAYER_DOT_SIZE/2,
-            PLAYER_DOT_SIZE,
-            PLAYER_DOT_SIZE
-        };
-        SDL_RenderFillRect(renderer, &playerRect);
+      // Draw player dot
+      if (i == playerID) {
+        // Current player in yellow
+        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+      } else {
+        // Other players in red
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+      }
 
-        // Draw direction indicator for current player
-        if (i == playerID) {
-            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
-            SDL_RenderDrawLine(renderer,
-                playerMinimapX,
-                playerMinimapY,
-                playerMinimapX + static_cast<int>(player.dirX * DIRECTION_LINE_LENGTH),
-                playerMinimapY + static_cast<int>(player.dirY * DIRECTION_LINE_LENGTH)
-            );
-        }
+      SDL_Rect playerRect = {playerMinimapX - PLAYER_DOT_SIZE / 2,
+                             playerMinimapY - PLAYER_DOT_SIZE / 2,
+                             PLAYER_DOT_SIZE, PLAYER_DOT_SIZE};
+      SDL_RenderFillRect(renderer, &playerRect);
+
+      // Draw direction indicator for current player
+      if (i == playerID) {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+        SDL_RenderDrawLine(
+            renderer, playerMinimapX, playerMinimapY,
+            playerMinimapX +
+                static_cast<int>(player.dirX * DIRECTION_LINE_LENGTH),
+            playerMinimapY +
+                static_cast<int>(player.dirY * DIRECTION_LINE_LENGTH));
+      }
     }
 
     // Draw minimap border
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderDrawRect(renderer, &minimapBG);
-}
+  }
   void render() {
     if (players.empty() || playerID >= players.size()) {
       std::cerr << "Error: No valid player data. Skipping rendering."
@@ -338,25 +365,29 @@ void renderMinimap() {
       }
     }
 
-        // Sort sprites by distance (furthest first)
-        std::vector<Sprite> spriteList;
-        for (size_t i = 0; i < players.size(); i++) {
-            if (i != playerID) {
-                double dx = players[i].posX - currentPlayer.posX;
-                double dy = players[i].posY - currentPlayer.posY;
-                double distance = dx * dx + dy * dy; // Use squared distance for efficiency
-                
-                spriteList.push_back(Sprite(players[i].posX, players[i].posY, distance, &playerSprite, i));
-                // spriteList.push_back(Sprite(players[i].posX, players[i].posY, distance, &playerSprite));
-                // spriteList.push_back({players[i].posX, players[i].posY, distance, playerSprite});
-            }
-        }
+    // Sort sprites by distance (furthest first)
+    std::vector<Sprite> spriteList;
+    for (size_t i = 0; i < players.size(); i++) {
+      if (i != playerID) {
+        double dx = players[i].posX - currentPlayer.posX;
+        double dy = players[i].posY - currentPlayer.posY;
+        double distance =
+            dx * dx + dy * dy; // Use squared distance for efficiency
 
-        std::sort(spriteList.begin(), spriteList.end(), [](const Sprite& a, const Sprite& b) {
-            return a.distance > b.distance; // Render closest last
-        });
+        spriteList.push_back(Sprite(players[i].posX, players[i].posY, distance,
+                                    &playerSprite, i));
+        // spriteList.push_back(Sprite(players[i].posX, players[i].posY,
+        // distance, &playerSprite)); spriteList.push_back({players[i].posX,
+        // players[i].posY, distance, playerSprite});
+      }
+    }
 
-        SDL_Rect srcRect, destRect; // ✅ Declare rects before using them
+    std::sort(spriteList.begin(), spriteList.end(),
+              [](const Sprite &a, const Sprite &b) {
+                return a.distance > b.distance; // Render closest last
+              });
+
+    SDL_Rect srcRect, destRect; // ✅ Declare rects before using them
 
     // Render sprites with per-pixel visibility check
     for (const auto &sprite : spriteList) {
@@ -390,60 +421,71 @@ void renderMinimap() {
       drawStartX = std::max(0, drawStartX);
       drawEndX = std::min(SCREEN_WIDTH - 1, drawEndX);
 
-            // for (const auto& sprite : spriteList) {
-                int playerIndex = sprite.playerIndex;
+      // for (const auto& sprite : spriteList) {
+      int playerIndex = sprite.playerIndex;
 
-                // Get the other player's direction
-                double otherDirX = players[playerIndex].dirX;
-                double otherDirY = players[playerIndex].dirY;
+      // Get the other player's direction
+      double otherDirX = players[playerIndex].dirX;
+      double otherDirY = players[playerIndex].dirY;
 
-                // Get current player's right direction
-                double cameraRightX = currentPlayer.planeX;
-                double cameraRightY = currentPlayer.planeY;
+      // Get current player's right direction
+      double cameraRightX = currentPlayer.planeX;
+      double cameraRightY = currentPlayer.planeY;
 
-                // Compute dot product to determine flipping
-                double dotProduct = (otherDirX * cameraRightX) + (otherDirY * cameraRightY);
-                bool shouldFlip = dotProduct < 0;  // ✅ Flip if looking left relative to us
+      // Compute dot product to determine flipping
+      double dotProduct =
+          (otherDirX * cameraRightX) + (otherDirY * cameraRightY);
+      bool shouldFlip =
+          dotProduct < 0; // ✅ Flip if looking left relative to us
 
-                // ✅ Get the correct walking frame
-                SDL_Rect srcRect = getWalkingFrame(*sprite.spriteSheet, players[playerIndex].isMoving);
+      // ✅ Get the correct walking frame
+      SDL_Rect srcRect =
+          getWalkingFrame(*sprite.spriteSheet, players[playerIndex].isMoving);
 
-                // ✅ Ensure valid dimensions
-                if (srcRect.w == 0 || srcRect.h == 0) {
-                    std::cerr << "Warning: srcRect has invalid dimensions!" << std::endl;
-                    continue;
-                }
+      // ✅ Ensure valid dimensions
+      if (srcRect.w == 0 || srcRect.h == 0) {
+        std::cerr << "Warning: srcRect has invalid dimensions!" << std::endl;
+        continue;
+      }
 
-                // ✅ Ensure `SDL_RenderCopyEx` is actually being used
-                SDL_RendererFlip flipType = shouldFlip ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+      // ✅ Ensure `SDL_RenderCopyEx` is actually being used
+      SDL_RendererFlip flipType =
+          shouldFlip ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
 
-                // std::cout << "Rendering Player " << playerIndex << " Flip: " << (shouldFlip ? "YES" : "NO") << std::endl;
+      // std::cout << "Rendering Player " << playerIndex << " Flip: " <<
+      // (shouldFlip ? "YES" : "NO") << std::endl;
 
-                // ✅ Apply the flipping transformation
-                SDL_RenderCopyEx(renderer, sprite.spriteSheet->texture, &srcRect, &destRect, 0, NULL, flipType);
-            // }
-            for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
-                if (stripe < 0 || stripe >= SCREEN_WIDTH) continue;  // Skip out-of-bounds pixels
+      // ✅ Apply the flipping transformation
+      SDL_RenderCopyEx(renderer, sprite.spriteSheet->texture, &srcRect,
+                       &destRect, 0, NULL, flipType);
+      // }
+      for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
+        if (stripe < 0 || stripe >= SCREEN_WIDTH)
+          continue; // Skip out-of-bounds pixels
 
-                if (transformY > zBuffer[stripe]) continue;  // ✅ Skip if behind a wall
+        if (transformY > zBuffer[stripe])
+          continue; // ✅ Skip if behind a wall
 
-                // ✅ Reverse texture column selection when flipping
-                int texX;
-                if (shouldFlip) {
-                    texX = srcRect.x + srcRect.w - (int)((stripe - drawStartX) * (float)srcRect.w / (drawEndX - drawStartX)) - 1;
-                } else {
-                    texX = srcRect.x + (int)((stripe - drawStartX) * (float)srcRect.w / (drawEndX - drawStartX));
-                }
+        // ✅ Reverse texture column selection when flipping
+        int texX;
+        if (shouldFlip) {
+          texX = srcRect.x + srcRect.w -
+                 (int)((stripe - drawStartX) * (float)srcRect.w /
+                       (drawEndX - drawStartX)) -
+                 1;
+        } else {
+          texX = srcRect.x + (int)((stripe - drawStartX) * (float)srcRect.w /
+                                   (drawEndX - drawStartX));
+        }
 
-                SDL_Rect srcColumn = {texX, srcRect.y, 1, srcRect.h}; // Select 1px slice of sprite
-                SDL_Rect columnRect = {stripe, drawStartY, 1, spriteHeight}; // Render 1px wide column
+        SDL_Rect srcColumn = {texX, srcRect.y, 1,
+                              srcRect.h}; // Select 1px slice of sprite
+        SDL_Rect columnRect = {stripe, drawStartY, 1,
+                               spriteHeight}; // Render 1px wide column
 
-                SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcColumn, &columnRect);
-            }
-
-
-
-
+        SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcColumn,
+                       &columnRect);
+      }
 
       // for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
       //     if (transformY > zBuffer[stripe]) continue; // Only remove parts
@@ -499,7 +541,7 @@ void renderMinimap() {
 
     SDL_RenderCopy(renderer, weaponSprite.texture, &weaponSrcRect,
                    &weaponDestRect);
-    
+
     renderMinimap();
 
     SDL_RenderPresent(renderer);
@@ -540,6 +582,8 @@ public:
     if (!client) {
       throw std::runtime_error("Failed to create ENet client");
     }
+
+    SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "1");
 
     ENetAddress address;
     enet_address_set_host(&address, SERVER_HOST);
@@ -637,18 +681,18 @@ public:
 
       handleInput();
 
-            ENetEvent event;
-            while (enet_host_service(client, &event, 0) > 0) {
-                switch (event.type) {
-                    case ENET_EVENT_TYPE_RECEIVE: {
-                        if (event.packet->dataLength == sizeof(uint8_t)) {
-                            // This is the initial player ID assignment
-                            playerID = *(uint8_t*)event.packet->data;
-                            std::cout << "Assigned player ID: " << (int)playerID << std::endl;
-                        } else if (event.packet->dataLength == sizeof(PositionPacket)) {
-                            // This is a position update
-                            PositionPacket* pos = (PositionPacket*)event.packet->data;
-                            players[pos->playerID] = pos->state;
+      ENetEvent event;
+      while (enet_host_service(client, &event, 0) > 0) {
+        switch (event.type) {
+        case ENET_EVENT_TYPE_RECEIVE: {
+          if (event.packet->dataLength == sizeof(uint8_t)) {
+            // This is the initial player ID assignment
+            playerID = *(uint8_t *)event.packet->data;
+            std::cout << "Assigned player ID: " << (int)playerID << std::endl;
+          } else if (event.packet->dataLength == sizeof(PositionPacket)) {
+            // This is a position update
+            PositionPacket *pos = (PositionPacket *)event.packet->data;
+            players[pos->playerID] = pos->state;
           } else if (event.packet->dataLength ==
                      sizeof(HitNotificationPacket)) {
             // This is a hit notification
@@ -663,18 +707,18 @@ public:
                         << std::endl;
               // Here you can add visual/audio feedback for successful hit
             }
-                        }
-                        enet_packet_destroy(event.packet);
-                        break;
-                    }
-                    case ENET_EVENT_TYPE_DISCONNECT:
-                        std::cout << "Disconnected from server" << std::endl;
-                        isRunning = false;
-                        break;
-                    default:
-                        break;
-                }
-            }
+          }
+          enet_packet_destroy(event.packet);
+          break;
+        }
+        case ENET_EVENT_TYPE_DISCONNECT:
+          std::cout << "Disconnected from server" << std::endl;
+          isRunning = false;
+          break;
+        default:
+          break;
+        }
+      }
 
       render();
 

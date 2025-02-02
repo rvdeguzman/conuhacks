@@ -107,6 +107,19 @@ private:
     double newX = player.posX;
     double newY = player.posY;
 
+    if (input.mouseRotation != 0.0) {
+      double rotAmount =
+          -input.mouseRotation; // Negative because screen coordinates
+      double oldDirX = player.dirX;
+      player.dirX = player.dirX * cos(rotAmount) - player.dirY * sin(rotAmount);
+      player.dirY = oldDirX * sin(rotAmount) + player.dirY * cos(rotAmount);
+      double oldPlaneX = player.planeX;
+      player.planeX =
+          player.planeX * cos(rotAmount) - player.planeY * sin(rotAmount);
+      player.planeY =
+          oldPlaneX * sin(rotAmount) + player.planeY * cos(rotAmount);
+    }
+
     // Handle rotation (no collision check needed)
     if (input.turnRight) {
       double oldDirX = player.dirX;
@@ -276,63 +289,69 @@ public:
 
     // Calculate distance
     double distance = sqrt(dx * dx + dy * dy);
-    if (distance > 8.0) return false; // Maximum shooting distance
+    if (distance > 8.0)
+      return false; // Maximum shooting distance
 
     // Normalize direction vectors
     double normalizedToTargetX = dx / distance;
     double normalizedToTargetY = dy / distance;
-    
-    double dirLength = sqrt(shooter.dirX * shooter.dirX + shooter.dirY * shooter.dirY);
+
+    double dirLength =
+        sqrt(shooter.dirX * shooter.dirX + shooter.dirY * shooter.dirY);
     double normalizedDirX = shooter.dirX / dirLength;
     double normalizedDirY = shooter.dirY / dirLength;
 
     // Calculate dot product to get angle
-    double dotProduct = normalizedDirX * normalizedToTargetX + normalizedDirY * normalizedToTargetY;
-    if (dotProduct <= 0.984) return false; // cos(10°) ≈ 0.984
+    double dotProduct = normalizedDirX * normalizedToTargetX +
+                        normalizedDirY * normalizedToTargetY;
+    if (dotProduct <= 0.984)
+      return false; // cos(10°) ≈ 0.984
 
     // Now check for walls using a more precise approach
     double currX = shooter.posX;
     double currY = shooter.posY;
     const double STEP_SIZE = 0.1; // Small steps for precise collision
-    
+
     // Calculate step vectors
     double stepX = normalizedToTargetX * STEP_SIZE;
     double stepY = normalizedToTargetY * STEP_SIZE;
-    
+
     // Check points along the line between shooter and target
     int numSteps = static_cast<int>(distance / STEP_SIZE);
-    
+
     for (int i = 0; i < numSteps; i++) {
-        // Move along the line
-        currX += stepX;
-        currY += stepY;
-        
-        // Get current map cell
-        int mapX = static_cast<int>(currX);
-        int mapY = static_cast<int>(currY);
-        
-        // Check if we've reached the target (with some tolerance)
-        double distToTarget = sqrt(pow(target.posX - currX, 2) + pow(target.posY - currY, 2));
-        if (distToTarget < PLAYER_RADIUS) {
-            return true; // Hit the target!
+      // Move along the line
+      currX += stepX;
+      currY += stepY;
+
+      // Get current map cell
+      int mapX = static_cast<int>(currX);
+      int mapY = static_cast<int>(currY);
+
+      // Check if we've reached the target (with some tolerance)
+      double distToTarget =
+          sqrt(pow(target.posX - currX, 2) + pow(target.posY - currY, 2));
+      if (distToTarget < PLAYER_RADIUS) {
+        return true; // Hit the target!
+      }
+
+      // Check for wall collision
+      if (mapX >= 0 && mapX < MAP_WIDTH && mapY >= 0 && mapY < MAP_HEIGHT) {
+        if (worldMap[mapX][mapY] > 0) {
+          // Additional check for corner cases
+          // If we're very close to the target when we hit a wall, still count
+          // it as a hit
+          if (distToTarget < PLAYER_RADIUS * 2) {
+            return true;
+          }
+          return false; // Hit a wall
         }
-        
-        // Check for wall collision
-        if (mapX >= 0 && mapX < MAP_WIDTH && mapY >= 0 && mapY < MAP_HEIGHT) {
-            if (worldMap[mapX][mapY] > 0) {
-                // Additional check for corner cases
-                // If we're very close to the target when we hit a wall, still count it as a hit
-                if (distToTarget < PLAYER_RADIUS * 2) {
-                    return true;
-                }
-                return false; // Hit a wall
-            }
-        }
+      }
     }
-    
+
     // If we got here, we're in range and no walls are in the way
     return true;
-}
+  }
 
   void handleShot(const ShotAttemptPacket &shotPacket,
                   std::vector<PlayerState> &players) {
