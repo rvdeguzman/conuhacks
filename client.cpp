@@ -71,6 +71,13 @@ private:
       }
     }
 
+    if (state[SDL_SCANCODE_Q]) {
+      if (mouseGrabbed) {
+        mouseGrabbed = false;
+        SDL_SetRelativeMouseMode(SDL_FALSE);
+      }
+    }
+
     // Mouse-look handling
     if (!mouseGrabbed && (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT))) {
       mouseGrabbed = true;
@@ -901,13 +908,6 @@ public:
             std::cout << "Game has started!" << std::endl;
             gameState = PLAYING; // Switch to PLAYING state
           }
-        }
-        if (event.packet->dataLength == sizeof(PositionPacket)) {
-          PositionPacket *pos = (PositionPacket *)event.packet->data;
-          std::cout << "Player " << (int)pos->playerID
-                    << " direction: " << pos->state.dirX << ", "
-                    << pos->state.dirY << std::endl;
-          players[pos->playerID] = pos->state;
         }
         // Free the received packet after processing
         enet_packet_destroy(event.packet);
