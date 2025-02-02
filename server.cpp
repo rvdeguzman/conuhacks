@@ -12,7 +12,7 @@ private:
   ENetHost *server;
   std::vector<ENetPeer *> clients;
   std::vector<PlayerState> players;
-  const double PLAYER_RADIUS = 0.5; // Collision radius for players
+  const double PLAYER_RADIUS = 0.2; // Collision radius for players
   const double WALL_BUFFER = 0.1;   // Extra buffer space from walls
   double lastTime;
 

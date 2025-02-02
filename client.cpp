@@ -87,6 +87,85 @@ private:
     enet_peer_send(server, 0, packet);
   }
 
+void renderMinimap() {
+    const int MINIMAP_SIZE = 150;  // Size of the minimap in pixels
+    const int MINIMAP_X = SCREEN_WIDTH - MINIMAP_SIZE - 10;  // Position from right
+    const int MINIMAP_Y = 10;  // Position from top
+    const int CELL_SIZE = MINIMAP_SIZE / MAP_WIDTH;  // Size of each map cell
+    const int PLAYER_DOT_SIZE = 4;  // Size of player dots on minimap
+    const int DIRECTION_LINE_LENGTH = 8;  // Length of direction indicator
+
+    // Draw minimap background
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 192);  // Semi-transparent black
+    SDL_Rect minimapBG = {MINIMAP_X, MINIMAP_Y, MINIMAP_SIZE, MINIMAP_SIZE};
+    SDL_RenderFillRect(renderer, &minimapBG);
+
+    // Draw walls
+    for (int y = 0; y < MAP_HEIGHT; y++) {
+        for (int x = 0; x < MAP_WIDTH; x++) {
+            if (worldMap[x][y] > 0) {
+                // Choose color based on wall type
+                switch(worldMap[x][y]) {
+                    case 1: SDL_SetRenderDrawColor(renderer, 192, 192, 192, 255); break;  // Gray
+                    case 2: SDL_SetRenderDrawColor(renderer, 192, 0, 0, 255); break;      // Red
+                    case 3: SDL_SetRenderDrawColor(renderer, 0, 192, 0, 255); break;      // Green
+                    case 4: SDL_SetRenderDrawColor(renderer, 0, 0, 192, 255); break;      // Blue
+                    default: SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);        // White
+                }
+
+                SDL_Rect wallRect = {
+                    MINIMAP_X + (x * CELL_SIZE),
+                    MINIMAP_Y + (y * CELL_SIZE),
+                    CELL_SIZE,
+                    CELL_SIZE
+                };
+                SDL_RenderFillRect(renderer, &wallRect);
+            }
+        }
+    }
+
+    // Draw players
+    for (size_t i = 0; i < players.size(); i++) {
+        const PlayerState& player = players[i];
+        
+        // Calculate player position on minimap
+        int playerMinimapX = MINIMAP_X + static_cast<int>(player.posX * CELL_SIZE);
+        int playerMinimapY = MINIMAP_Y + static_cast<int>(player.posY * CELL_SIZE);
+
+        // Draw player dot
+        if (i == playerID) {
+            // Current player in yellow
+            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+        } else {
+            // Other players in red
+            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+        }
+
+        SDL_Rect playerRect = {
+            playerMinimapX - PLAYER_DOT_SIZE/2,
+            playerMinimapY - PLAYER_DOT_SIZE/2,
+            PLAYER_DOT_SIZE,
+            PLAYER_DOT_SIZE
+        };
+        SDL_RenderFillRect(renderer, &playerRect);
+
+        // Draw direction indicator for current player
+        if (i == playerID) {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+            SDL_RenderDrawLine(renderer,
+                playerMinimapX,
+                playerMinimapY,
+                playerMinimapX + static_cast<int>(player.dirX * DIRECTION_LINE_LENGTH),
+                playerMinimapY + static_cast<int>(player.dirY * DIRECTION_LINE_LENGTH)
+            );
+        }
+    }
+
+    // Draw minimap border
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &minimapBG);
+}
   void render() {
     if (players.empty() || playerID >= players.size()) {
       std::cerr << "Error: No valid player data. Skipping rendering."
@@ -420,13 +499,8 @@ private:
 
     SDL_RenderCopy(renderer, weaponSprite.texture, &weaponSrcRect,
                    &weaponDestRect);
-
-    SDL_RenderPresent(renderer);
-
-    //     // SDL_Rect destRect = {stripe, drawStartY, 1, spriteHeight}; //
-    //     Draw one column
-    //     // SDL_RenderCopy(renderer, sprite.texture, NULL, &destRect);
-    // }
+    
+    renderMinimap();
 
     SDL_RenderPresent(renderer);
   }
