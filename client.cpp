@@ -301,16 +301,36 @@ private:
 
     void handleBulletUpdates(const BulletPacket &bulletPacket)
     {
-        // Update local bullet state based on the received packet
-        Bullet bullet;
-        bullet.posX = bulletPacket.posX;
-        bullet.posY = bulletPacket.posY;
-        bullet.dirX = bulletPacket.dirX;
-        bullet.dirY = bulletPacket.dirY;
-        bullet.active = true; // Assume active if received
+        bool found = false;
 
-        // Add or update the bullet in the local list
-        bullets.push_back(bullet);
+        // Check if the bullet already exists in the client's list
+        for (auto &bullet : bullets)
+        {
+            // Match bullets by approximate position (since they move every frame)
+            if (std::hypot(bullet.posX - bulletPacket.posX, bullet.posY - bulletPacket.posY) < 0.1)
+            {
+                // Update existing bullet
+                bullet.posX = bulletPacket.posX;
+                bullet.posY = bulletPacket.posY;
+                bullet.dirX = bulletPacket.dirX;
+                bullet.dirY = bulletPacket.dirY;
+                bullet.active = bulletPacket.active; // Use the server's active state
+                found = true;
+                break;
+            }
+        }
+
+        // If not found and the bullet is active, add it
+        if (!found && bulletPacket.active)
+        {
+            bullets.push_back({
+                bulletPacket.posX,
+                bulletPacket.posY,
+                bulletPacket.dirX,
+                bulletPacket.dirY,
+                bulletPacket.active // Use the server's active state
+            });
+        }
 
         // Remove inactive bullets
         bullets.erase(

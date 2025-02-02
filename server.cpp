@@ -52,8 +52,8 @@ private:
         if (input.shoot)
         {
             Bullet bullet;
-            bullet.posX = players[playerIndex].posX;
-            bullet.posY = players[playerIndex].posY;
+            bullet.posX = players[playerIndex].posX + players[playerIndex].dirX * 0.5;
+            bullet.posY = players[playerIndex].posY + players[playerIndex].dirY * 0.5;
             bullet.dirX = players[playerIndex].dirX;
             bullet.dirY = players[playerIndex].dirY;
             bullet.active = true;
@@ -102,6 +102,7 @@ private:
             bulletPacket.posY = bullet.posY;
             bulletPacket.dirX = bullet.dirX;
             bulletPacket.dirY = bullet.dirY;
+            bulletPacket.active = bullet.active;
 
             ENetPacket *packet = enet_packet_create(
                 &bulletPacket,
