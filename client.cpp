@@ -12,18 +12,9 @@
 
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
-const int MAP_WIDTH = 8;
-const int MAP_HEIGHT = 8;
 const char *SERVER_HOST = "127.0.0.1";
 // const char* SERVER_HOST = "192.168.163.247";
 const int SERVER_PORT = 1234;
-
-// Define the map (1 represents walls, 0 represents empty space)
-const int worldMap[MAP_WIDTH][MAP_HEIGHT] = {
-    {4, 4, 4, 4, 4, 4, 4, 4}, {4, 0, 0, 0, 0, 0, 0, 4},
-    {4, 0, 2, 0, 0, 2, 0, 4}, {4, 0, 0, 0, 0, 0, 0, 1},
-    {4, 0, 2, 0, 0, 2, 0, 4}, {4, 0, 2, 0, 0, 2, 0, 4},
-    {4, 0, 0, 0, 0, 0, 0, 4}, {4, 3, 3, 1, 1, 3, 3, 4}};
 
 class GameClient {
 private:
