@@ -20,12 +20,10 @@ const int SERVER_PORT = 1234;
 
 // Define the map (1 represents walls, 0 represents empty space)
 const int worldMap[MAP_WIDTH][MAP_HEIGHT] = {
-    {4, 4, 4, 4, 4, 4, 4, 4}, {4, 0, 0, 0, 0, 0, 0, 4},
-    {4, 0, 2, 0, 0, 2, 0, 4}, {4, 0, 0, 0, 0, 0, 0, 1},
-    {4, 0, 2, 0, 0, 2, 0, 4}, {4, 0, 2, 0, 0, 2, 0, 4},
-    {4, 0, 0, 0, 0, 0, 0, 4}, {4, 3, 3, 1, 1, 3, 3, 4}};
+    {4, 4, 4, 4, 4, 4, 4, 4}, {4, 0, 0, 0, 0, 0, 0, 4}, {4, 0, 2, 0, 0, 2, 0, 4}, {4, 0, 0, 0, 0, 0, 0, 1}, {4, 0, 2, 0, 0, 2, 0, 4}, {4, 0, 2, 0, 0, 2, 0, 4}, {4, 0, 0, 0, 0, 0, 0, 4}, {4, 3, 3, 1, 1, 3, 3, 4}};
 
-class GameClient {
+class GameClient
+{
 private:
   SDL_Window *window;
   SDL_Renderer *renderer;
@@ -35,6 +33,9 @@ private:
   size_t playerID;
   bool isRunning;
   SDL_Texture *playerTexture;
+  std::vector<Bullet> bullets;
+  Uint32 lastBulletTime = 0;
+  const Uint32 BULLET_COOLDOWN = 250; // 250ms between shots
 
   // Weapon state
   int currentWeapon = 0; // Current weapon type
@@ -50,7 +51,78 @@ private:
   SpriteSheet playerSprite;
   SpriteSheet weaponSprite;
 
-  void handleInput() {
+  void renderBullets()
+  {
+    for (const auto &bullet : bullets)
+    {
+      if (!bullet.active)
+        continue;
+
+      // Project bullet position to screen space
+      double spriteX = bullet.posX - players[playerID].posX;
+      double spriteY = bullet.posY - players[playerID].posY;
+
+      double invDet = 1.0 / (players[playerID].planeX * players[playerID].dirY -
+                             players[playerID].dirX * players[playerID].planeY);
+
+      double transformX = invDet * (players[playerID].dirY * spriteX -
+                                    players[playerID].dirX * spriteY);
+      double transformY = invDet * (-players[playerID].planeY * spriteX +
+                                    players[playerID].planeX * spriteY);
+
+      if (transformY <= 0)
+        continue;
+
+      int bulletScreenX = int((SCREEN_WIDTH / 2) * (1 + transformX / transformY));
+      int bulletSize = std::min(32, int(SCREEN_HEIGHT / transformY));
+
+      // Draw bullet as a small rectangle
+      SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Yellow color
+      SDL_Rect bulletRect = {
+          bulletScreenX - bulletSize / 2,
+          SCREEN_HEIGHT / 2 - bulletSize / 2,
+          bulletSize,
+          bulletSize};
+      SDL_RenderFillRect(renderer, &bulletRect);
+    }
+  }
+
+  void handleBulletInput()
+  {
+    const Uint8 *state = SDL_GetKeyboardState(NULL);
+
+    // Changed from SDL_SCANCODE_Q to SDL_SCANCODE_SPACE
+    if (state[SDL_SCANCODE_SPACE] && !isShooting)
+    { // Added isShooting check to prevent overlap with weapon animation
+      Uint32 currentTime = SDL_GetTicks();
+      if (currentTime - lastBulletTime >= BULLET_COOLDOWN)
+      {
+        lastBulletTime = currentTime;
+
+        // Create bullet packet
+        BulletPacket bulletPacket;
+        bulletPacket.ownerID = playerID;
+        bulletPacket.posX = players[playerID].posX;
+        bulletPacket.posY = players[playerID].posY;
+        bulletPacket.dirX = players[playerID].dirX;
+        bulletPacket.dirY = players[playerID].dirY;
+
+        // Send to server
+        ENetPacket *packet = enet_packet_create(&bulletPacket,
+                                                sizeof(BulletPacket), ENET_PACKET_FLAG_RELIABLE);
+        enet_peer_send(server, 0, packet);
+      }
+    }
+  }
+
+  // Add to the render() function in client.cpp, just before SDL_RenderPresent:
+  renderBullets();
+
+  // Add to handleInput() in client.cpp:
+  handleBulletInput();
+
+  void handleInput()
+  {
     const Uint8 *state = SDL_GetKeyboardState(NULL);
 
     InputPacket input;
@@ -62,7 +134,8 @@ private:
     input.turnRight = state[SDL_SCANCODE_RIGHT];
 
     // Handle weapon input
-    if (state[SDL_SCANCODE_SPACE] && !isShooting) {
+    if (state[SDL_SCANCODE_SPACE] && !isShooting)
+    {
       isShooting = true;
       lastShotTime = SDL_GetTicks();
       isShooting = true;
@@ -96,8 +169,10 @@ private:
     enet_peer_send(server, 0, packet);
   }
 
-  void render() {
-    if (players.empty() || playerID >= players.size()) {
+  void render()
+  {
+    if (players.empty() || playerID >= players.size())
+    {
       std::cerr << "Error: No valid player data. Skipping rendering."
                 << std::endl;
       return;
@@ -111,7 +186,8 @@ private:
 
     std::vector<double> zBuffer(SCREEN_WIDTH, 1e30); // Large initial depth
 
-    for (int x = 0; x < SCREEN_WIDTH; x++) {
+    for (int x = 0; x < SCREEN_WIDTH; x++)
+    {
       double cameraX = 2 * x / double(SCREEN_WIDTH) - 1;
       double rayDirX = currentPlayer.dirX + currentPlayer.planeX * cameraX;
       double rayDirY = currentPlayer.dirY + currentPlayer.planeY * cameraX;
@@ -128,27 +204,37 @@ private:
       int hit = 0;
       int side;
 
-      if (rayDirX < 0) {
+      if (rayDirX < 0)
+      {
         stepX = -1;
         sideDistX = (currentPlayer.posX - mapX) * deltaDistX;
-      } else {
+      }
+      else
+      {
         stepX = 1;
         sideDistX = (mapX + 1.0 - currentPlayer.posX) * deltaDistX;
       }
-      if (rayDirY < 0) {
+      if (rayDirY < 0)
+      {
         stepY = -1;
         sideDistY = (currentPlayer.posY - mapY) * deltaDistY;
-      } else {
+      }
+      else
+      {
         stepY = 1;
         sideDistY = (mapY + 1.0 - currentPlayer.posY) * deltaDistY;
       }
 
-      while (hit == 0) {
-        if (sideDistX < sideDistY) {
+      while (hit == 0)
+      {
+        if (sideDistX < sideDistY)
+        {
           sideDistX += deltaDistX;
           mapX += stepX;
           side = 0;
-        } else {
+        }
+        else
+        {
           sideDistY += deltaDistY;
           mapY += stepY;
           side = 1;
@@ -168,7 +254,8 @@ private:
     }
 
     // Raycasting
-    for (int x = 0; x < SCREEN_WIDTH; x++) {
+    for (int x = 0; x < SCREEN_WIDTH; x++)
+    {
       double cameraX = 2 * x / double(SCREEN_WIDTH) - 1;
       double rayDirX = currentPlayer.dirX + currentPlayer.planeX * cameraX;
       double rayDirY = currentPlayer.dirY + currentPlayer.planeY * cameraX;
@@ -185,28 +272,38 @@ private:
       int hit = 0;
       int side;
 
-      if (rayDirX < 0) {
+      if (rayDirX < 0)
+      {
         stepX = -1;
         sideDistX = (currentPlayer.posX - mapX) * deltaDistX;
-      } else {
+      }
+      else
+      {
         stepX = 1;
         sideDistX = (mapX + 1.0 - currentPlayer.posX) * deltaDistX;
       }
-      if (rayDirY < 0) {
+      if (rayDirY < 0)
+      {
         stepY = -1;
         sideDistY = (currentPlayer.posY - mapY) * deltaDistY;
-      } else {
+      }
+      else
+      {
         stepY = 1;
         sideDistY = (mapY + 1.0 - currentPlayer.posY) * deltaDistY;
       }
 
       // DDA algorithm
-      while (hit == 0) {
-        if (sideDistX < sideDistY) {
+      while (hit == 0)
+      {
+        if (sideDistX < sideDistY)
+        {
           sideDistX += deltaDistX;
           mapX += stepX;
           side = 0;
-        } else {
+        }
+        else
+        {
           sideDistY += deltaDistY;
           mapY += stepY;
           side = 1;
@@ -232,9 +329,12 @@ private:
 
       // Calculate texture coordinates
       double wallX;
-      if (side == 0) {
+      if (side == 0)
+      {
         wallX = currentPlayer.posY + perpWallDist * rayDirY;
-      } else {
+      }
+      else
+      {
         wallX = currentPlayer.posX + perpWallDist * rayDirX;
       }
       wallX -= floor(wallX);
@@ -258,7 +358,8 @@ private:
       double texPos = (drawStart - SCREEN_HEIGHT / 2 + lineHeight / 2) * step;
 
       // Draw the textured vertical line pixel by pixel
-      for (int y = drawStart; y < drawEnd; y++) {
+      for (int y = drawStart; y < drawEnd; y++)
+      {
         int texY = (int)texPos & (TEX_HEIGHT - 1);
         texPos += step;
 
@@ -270,8 +371,10 @@ private:
 
     // Sort sprites by distance (furthest first)
     std::vector<Sprite> spriteList;
-    for (size_t i = 0; i < players.size(); i++) {
-      if (i != playerID) {
+    for (size_t i = 0; i < players.size(); i++)
+    {
+      if (i != playerID)
+      {
         double dx = players[i].posX - currentPlayer.posX;
         double dy = players[i].posY - currentPlayer.posY;
         double distance =
@@ -285,12 +388,14 @@ private:
     }
 
     std::sort(spriteList.begin(), spriteList.end(),
-              [](const Sprite &a, const Sprite &b) {
+              [](const Sprite &a, const Sprite &b)
+              {
                 return a.distance > b.distance; // Render closest last
               });
 
     // Render sprites with per-pixel visibility check
-    for (const auto &sprite : spriteList) {
+    for (const auto &sprite : spriteList)
+    {
       double spriteX = sprite.x - currentPlayer.posX;
       double spriteY = sprite.y - currentPlayer.posY;
 
@@ -323,7 +428,8 @@ private:
 
       SDL_Rect srcRect = getWalkingFrame(*sprite.spriteSheet);
 
-      for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
+      for (int stripe = drawStartX; stripe < drawEndX; stripe++)
+      {
         if (stripe < 0 || stripe >= SCREEN_WIDTH)
           continue; // Skip out-of-bounds
 
@@ -359,13 +465,17 @@ private:
     }
     // Render weapon
     int weaponFrame = 0;
-    if (isShooting) {
+    if (isShooting)
+    {
       Uint32 elapsedTime = SDL_GetTicks() - lastShotTime;
-      if (elapsedTime < SHOOT_ANIMATION_MS) {
+      if (elapsedTime < SHOOT_ANIMATION_MS)
+      {
         // Calculate animation frame based on elapsed time
         weaponFrame = (elapsedTime * weaponSprite.cols) / SHOOT_ANIMATION_MS;
         weaponFrame = std::min(weaponFrame, weaponSprite.cols - 1);
-      } else {
+      }
+      else
+      {
         isShooting = false;
       }
     }
@@ -406,12 +516,15 @@ private:
   }
 
 public:
-  GameClient() : isRunning(false) {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0 || enet_initialize() != 0) {
+  GameClient() : isRunning(false)
+  {
+    if (SDL_Init(SDL_INIT_VIDEO) < 0 || enet_initialize() != 0)
+    {
       throw std::runtime_error("Failed to initialize SDL or ENet");
     }
 
-    if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
+    if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG))
+    {
       throw std::runtime_error("SDL2_image initialization failed: " +
                                std::string(IMG_GetError()));
     }
@@ -421,23 +534,30 @@ public:
                               SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH,
                               SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
 
-    if (!window) {
+    if (!window)
+    {
       std::cerr << "Failed to create window: " << SDL_GetError() << std::endl;
       return;
-    } else {
+    }
+    else
+    {
       std::cout << "SDL window created successfully!" << std::endl;
     }
 
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (!renderer) {
+    if (!renderer)
+    {
       std::cerr << "Failed to create renderer: " << SDL_GetError() << std::endl;
       return;
-    } else {
+    }
+    else
+    {
       std::cout << "SDL renderer created successfully!" << std::endl;
     }
 
     client = enet_host_create(NULL, 1, 2, 0, 0);
-    if (!client) {
+    if (!client)
+    {
       throw std::runtime_error("Failed to create ENet client");
     }
 
@@ -446,15 +566,19 @@ public:
     address.port = SERVER_PORT;
 
     server = enet_host_connect(client, &address, 2, 0);
-    if (!server) {
+    if (!server)
+    {
       throw std::runtime_error("Failed to connect to server");
     }
 
     playerSprite = loadSpriteSheet(renderer, "msgunner.info", "msgunner.bmp");
 
-    if (playerSprite.texture == nullptr) {
+    if (playerSprite.texture == nullptr)
+    {
       std::cerr << "Error: Failed to load sprite sheet!" << std::endl;
-    } else {
+    }
+    else
+    {
       std::cout << "Sprite sheet loaded successfully!" << std::endl;
       std::cout << "Sprite Info: " << playerSprite.cols << " cols, "
                 << playerSprite.rows << " rows, " << playerSprite.frameWidth
@@ -474,15 +598,18 @@ public:
     const char *textureFiles[NUM_TEXTURES] = {"wall1.png", "wall2.png",
                                               "wall3.png", "wall4.png"};
 
-    for (int i = 0; i < NUM_TEXTURES; i++) {
+    for (int i = 0; i < NUM_TEXTURES; i++)
+    {
       SDL_Surface *tempSurface = IMG_Load(textureFiles[i]);
-      if (!tempSurface) {
+      if (!tempSurface)
+      {
         throw std::runtime_error("Failed to load wall texture: " +
                                  std::string(IMG_GetError()));
       }
       wallTextures[i] = SDL_CreateTextureFromSurface(renderer, tempSurface);
       SDL_FreeSurface(tempSurface);
-      if (!wallTextures[i]) {
+      if (!wallTextures[i])
+      {
         throw std::runtime_error("Failed to create wall texture: " +
                                  std::string(SDL_GetError()));
       }
@@ -490,16 +617,20 @@ public:
 
     // Load player texture
     SDL_Surface *tempSurface = IMG_Load("player_texture.png");
-    if (!tempSurface) {
+    if (!tempSurface)
+    {
       throw std::runtime_error("Failed to load player texture: " +
                                std::string(IMG_GetError()));
     }
     playerTexture = SDL_CreateTextureFromSurface(renderer, tempSurface);
-    if (!playerTexture) {
+    if (!playerTexture)
+    {
       std::cerr << "Failed to create player texture: " << SDL_GetError()
                 << std::endl;
       return;
-    } else {
+    }
+    else
+    {
       std::cout << "Player texture loaded successfully!" << std::endl;
     }
 
@@ -520,17 +651,21 @@ public:
     // SDL_FreeSurface(tempSurface);
   }
 
-  void run() {
+  void run()
+  {
     SDL_Event e;
     const int FPS = 60;
     const int FRAME_DELAY = 1000 / FPS;
     Uint32 frameStart;
     int frameTime;
 
-    while (isRunning) {
+    while (isRunning)
+    {
       frameStart = SDL_GetTicks();
-      while (SDL_PollEvent(&e)) {
-        if (e.type == SDL_QUIT) {
+      while (SDL_PollEvent(&e))
+      {
+        if (e.type == SDL_QUIT)
+        {
           isRunning = false;
         }
       }
@@ -538,27 +673,38 @@ public:
       handleInput();
 
       ENetEvent event;
-      while (enet_host_service(client, &event, 0) > 0) {
-        switch (event.type) {
-        case ENET_EVENT_TYPE_RECEIVE: {
-          if (event.packet->dataLength == sizeof(uint8_t)) {
+      while (enet_host_service(client, &event, 0) > 0)
+      {
+        switch (event.type)
+        {
+        case ENET_EVENT_TYPE_RECEIVE:
+        {
+          if (event.packet->dataLength == sizeof(uint8_t))
+          {
             // This is the initial player ID assignment
             playerID = *(uint8_t *)event.packet->data;
             std::cout << "Assigned player ID: " << (int)playerID << std::endl;
-          } else if (event.packet->dataLength == sizeof(PositionPacket)) {
+          }
+          else if (event.packet->dataLength == sizeof(PositionPacket))
+          {
             // This is a position update
             PositionPacket *pos = (PositionPacket *)event.packet->data;
             players[pos->playerID] = pos->state;
-          } else if (event.packet->dataLength ==
-                     sizeof(HitNotificationPacket)) {
+          }
+          else if (event.packet->dataLength ==
+                   sizeof(HitNotificationPacket))
+          {
             // This is a hit notification
             HitNotificationPacket *hit =
                 (HitNotificationPacket *)event.packet->data;
-            if (hit->targetID == playerID) {
+            if (hit->targetID == playerID)
+            {
               std::cout << "You were hit by player " << hit->shooterID << "!"
                         << std::endl;
               // Here you can add visual/audio feedback for being hit
-            } else if (hit->shooterID == playerID) {
+            }
+            else if (hit->shooterID == playerID)
+            {
               std::cout << "You hit player " << hit->targetID << "!"
                         << std::endl;
               // Here you can add visual/audio feedback for successful hit
@@ -579,21 +725,25 @@ public:
       render();
 
       frameTime = SDL_GetTicks() - frameStart;
-      if (FRAME_DELAY > frameTime) {
+      if (FRAME_DELAY > frameTime)
+      {
         SDL_Delay(FRAME_DELAY - frameTime);
       }
     }
   }
 
-  ~GameClient() {
+  ~GameClient()
+  {
     SDL_DestroyTexture(playerTexture);
-    for (int i = 0; i < NUM_TEXTURES; i++) {
+    for (int i = 0; i < NUM_TEXTURES; i++)
+    {
       SDL_DestroyTexture(wallTextures[i]);
     }
     // SDL_DestroyTexture(playerTexture);
     // playerSprite.free();
 
-    if (playerSprite.texture) {
+    if (playerSprite.texture)
+    {
       SDL_DestroyTexture(playerSprite.texture);
       playerSprite.texture = nullptr;
     }
@@ -601,8 +751,10 @@ public:
     enet_peer_disconnect(server, 0);
 
     ENetEvent event;
-    while (enet_host_service(client, &event, 3000) > 0) {
-      switch (event.type) {
+    while (enet_host_service(client, &event, 3000) > 0)
+    {
+      switch (event.type)
+      {
       case ENET_EVENT_TYPE_RECEIVE:
         enet_packet_destroy(event.packet);
         break;
@@ -623,11 +775,15 @@ public:
   }
 };
 
-int main(int argc, char *args[]) {
-  try {
+int main(int argc, char *args[])
+{
+  try
+  {
     GameClient client;
     client.run();
-  } catch (const std::exception &e) {
+  }
+  catch (const std::exception &e)
+  {
     std::cerr << "Error: " << e.what() << std::endl;
     return 1;
   }

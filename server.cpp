@@ -7,15 +7,18 @@
 const int MAX_CLIENTS = 2;
 const int PORT = 1234;
 
-class GameServer {
+class GameServer
+{
 private:
   ENetHost *server;
   std::vector<ENetPeer *> clients;
   std::vector<PlayerState> players;
+  std::vector<Bullet> bullets;
 
   double lastTime;
 
-  void updatePlayerState(size_t playerIndex, const InputPacket &input) {
+  void updatePlayerState(size_t playerIndex, const InputPacket &input)
+  {
     PlayerState &player = players[playerIndex];
 
     // Calculate delta time in seconds
@@ -30,15 +33,18 @@ private:
     const double moveSpeed = BASE_MOVE_SPEED * deltaTime;
     const double rotSpeed = BASE_ROT_SPEED * deltaTime;
 
-    if (input.forward) {
+    if (input.forward)
+    {
       player.posX += player.dirX * moveSpeed;
       player.posY += player.dirY * moveSpeed;
     }
-    if (input.backward) {
+    if (input.backward)
+    {
       player.posX -= player.dirX * moveSpeed;
       player.posY -= player.dirY * moveSpeed;
     }
-    if (input.turnRight) {
+    if (input.turnRight)
+    {
       double oldDirX = player.dirX;
       player.dirX = player.dirX * cos(-rotSpeed) - player.dirY * sin(-rotSpeed);
       player.dirY = oldDirX * sin(-rotSpeed) + player.dirY * cos(-rotSpeed);
@@ -48,7 +54,8 @@ private:
       player.planeY =
           oldPlaneX * sin(-rotSpeed) + player.planeY * cos(-rotSpeed);
     }
-    if (input.turnLeft) {
+    if (input.turnLeft)
+    {
       double oldDirX = player.dirX;
       player.dirX = player.dirX * cos(rotSpeed) - player.dirY * sin(rotSpeed);
       player.dirY = oldDirX * sin(rotSpeed) + player.dirY * cos(rotSpeed);
@@ -57,21 +64,73 @@ private:
           player.planeX * cos(rotSpeed) - player.planeY * sin(rotSpeed);
       player.planeY = oldPlaneX * sin(rotSpeed) + player.planeY * cos(rotSpeed);
     }
-if (input.strafeRight) {
+    if (input.strafeRight)
+    {
       // Move perpendicular to direction vector (rotated 90 degrees counterclockwise)
       player.posX += player.dirY * moveSpeed;
       player.posY -= player.dirX * moveSpeed;
     }
-    if (input.strafeLeft) {
+    if (input.strafeLeft)
+    {
       // Move perpendicular to direction vector (rotated 90 degrees clockwise)
       player.posX -= player.dirY * moveSpeed;
       player.posY += player.dirX * moveSpeed;
     }
   }
 
+  void updateBullets(double deltaTime)
+  {
+    for (auto &bullet : bullets)
+    {
+      if (!bullet.active)
+        continue;
+
+      // Update position
+      bullet.posX += bullet.dirX * bullet.speed * deltaTime;
+      bullet.posY += bullet.dirY * bullet.speed * deltaTime;
+
+      // Check wall collisions using worldMap
+      // int mapX = static_cast<int>(bullet.posX);
+      // int mapY = static_cast<int>(bullet.posY);
+
+      // if (mapX < 0 || mapX >= MAP_WIDTH || mapY < 0 || mapY >= MAP_HEIGHT ||
+      //     worldMap[mapX][mapY] > 0)
+      // {
+      //   bullet.active = false;
+      // }
+    }
+
+    // Remove inactive bullets
+    bullets.erase(
+        std::remove_if(bullets.begin(), bullets.end(),
+                       [](const Bullet &b)
+                       { return !b.active; }),
+        bullets.end());
+  }
+
+  void handleBulletCreation(const BulletPacket &bulletPacket)
+  {
+    Bullet newBullet;
+    newBullet.ownerID = bulletPacket.ownerID;
+    newBullet.posX = bulletPacket.posX;
+    newBullet.posY = bulletPacket.posY;
+    newBullet.dirX = bulletPacket.dirX;
+    newBullet.dirY = bulletPacket.dirY;
+    newBullet.active = true;
+
+    bullets.push_back(newBullet);
+
+    // Broadcast bullet creation to all clients
+    ENetPacket *packet = enet_packet_create(&bulletPacket,
+                                            sizeof(BulletPacket), ENET_PACKET_FLAG_RELIABLE);
+    enet_host_broadcast(server, 0, packet);
+  }
+
 public:
-  GameServer() {
-    if (enet_initialize() != 0) {
+  GameServer()
+  {
+    if (enet_initialize() != 0)
+    {
       throw std::runtime_error("Failed to initialize ENet");
     }
 
@@ -82,7 +141,8 @@ public:
     address.port = PORT;
 
     server = enet_host_create(&address, MAX_CLIENTS, 2, 0, 0);
-    if (!server) {
+    if (!server)
+    {
       throw std::runtime_error("Failed to create ENet server");
     }
 
@@ -106,7 +166,8 @@ public:
     players.push_back(p2);
   }
 
-  bool isPlayerHit(const PlayerState &shooter, const PlayerState &target) {
+  bool isPlayerHit(const PlayerState &shooter, const PlayerState &target)
+  {
     // Calculate vector from shooter to target
     double dx = target.posX - shooter.posX;
     double dy = target.posY - shooter.posY;
@@ -135,7 +196,8 @@ public:
   }
 
   void handleShot(const ShotAttemptPacket &shotPacket,
-                  std::vector<PlayerState> &players) {
+                  std::vector<PlayerState> &players)
+  {
     if (shotPacket.shooterID >= players.size())
       return;
 
@@ -147,9 +209,12 @@ public:
     shooter.dirY = shotPacket.shooterDirY;
 
     // Check for hits on other players
-    for (size_t i = 0; i < players.size(); i++) {
-      if (i != shotPacket.shooterID) {
-        if (isPlayerHit(shooter, players[i])) {
+    for (size_t i = 0; i < players.size(); i++)
+    {
+      if (i != shotPacket.shooterID)
+      {
+        if (isPlayerHit(shooter, players[i]))
+        {
           // Player was hit! Send hit notification to all clients
           HitNotificationPacket hitPacket;
           hitPacket.shooterID = shotPacket.shooterID;
@@ -167,14 +232,19 @@ public:
       }
     }
   }
-  void run() {
+  void run()
+  {
     std::cout << "Server running on port " << PORT << std::endl;
 
-    while (true) {
+    while (true)
+    {
       ENetEvent event;
-      while (enet_host_service(server, &event, 10) > 0) {
-        switch (event.type) {
-        case ENET_EVENT_TYPE_CONNECT: {
+      while (enet_host_service(server, &event, 10) > 0)
+      {
+        switch (event.type)
+        {
+        case ENET_EVENT_TYPE_CONNECT:
+        {
           std::cout << "Client connected from " << event.peer->address.host
                     << ":" << event.peer->address.port << std::endl;
 
@@ -190,7 +260,8 @@ public:
           enet_peer_send(event.peer, 0, packet);
 
           // Send initial positions of all players to the new client
-          for (size_t i = 0; i < players.size(); i++) {
+          for (size_t i = 0; i < players.size(); i++)
+          {
             PositionPacket posPacket;
             posPacket.playerID = i;
             posPacket.state = players[i];
@@ -202,18 +273,23 @@ public:
 
           break;
         }
-        case ENET_EVENT_TYPE_RECEIVE: {
-          if (event.packet->dataLength == sizeof(InputPacket)) {
+        case ENET_EVENT_TYPE_RECEIVE:
+        {
+          if (event.packet->dataLength == sizeof(InputPacket))
+          {
             InputPacket *input = (InputPacket *)event.packet->data;
             size_t playerIndex = (size_t)event.peer->data;
             updatePlayerState(playerIndex, *input);
-          } else if (event.packet->dataLength == sizeof(ShotAttemptPacket)) {
+          }
+          else if (event.packet->dataLength == sizeof(ShotAttemptPacket))
+          {
             ShotAttemptPacket *shotPacket =
                 (ShotAttemptPacket *)event.packet->data;
             handleShot(*shotPacket, players);
           }
           // Broadcast updated positions to all clients
-          for (size_t i = 0; i < players.size(); i++) {
+          for (size_t i = 0; i < players.size(); i++)
+          {
             PositionPacket posPacket;
             posPacket.playerID = i;
             posPacket.state = players[i];
@@ -226,7 +302,8 @@ public:
           enet_packet_destroy(event.packet);
           break;
         }
-        case ENET_EVENT_TYPE_DISCONNECT: {
+        case ENET_EVENT_TYPE_DISCONNECT:
+        {
           std::cout << "Client disconnected" << std::endl;
           size_t playerIndex = (size_t)event.peer->data;
           clients[playerIndex] = nullptr;
@@ -251,17 +328,22 @@ public:
     }
   }
 
-  ~GameServer() {
+  ~GameServer()
+  {
     enet_host_destroy(server);
     enet_deinitialize();
   }
 };
 
-int main() {
-  try {
+int main()
+{
+  try
+  {
     GameServer server;
     server.run();
-  } catch (const std::exception &e) {
+  }
+  catch (const std::exception &e)
+  {
     std::cerr << "Error: " << e.what() << std::endl;
     return 1;
   }
