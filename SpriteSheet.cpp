@@ -85,11 +85,15 @@ SpriteSheet loadSpriteSheet(SDL_Renderer* renderer, const std::string& infoFile,
     return sheet;
 }
 
-SDL_Rect getWalkingFrame(const SpriteSheet& sheet) {
+SDL_Rect getWalkingFrame(const SpriteSheet& sheet, bool isMoving) {
     static const int columnIndex = 2; // 3rd column (0-based index)
     static const int startRow = 0;    // Row 1 (0-based index)
     static const int endRow = 4;      // Row 5 (0-based index)
     static const Uint32 timePerFrame = 100; // Frame duration in milliseconds
+
+    if (!isMoving) {
+        return sheet.frames[startRow * sheet.cols + columnIndex];
+    }
 
     int totalFrames = (endRow - startRow + 1);
     int frameRow = (SDL_GetTicks() / timePerFrame) % totalFrames + startRow;

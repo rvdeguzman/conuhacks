@@ -268,26 +268,25 @@ private:
       }
     }
 
-    // Sort sprites by distance (furthest first)
-    std::vector<Sprite> spriteList;
-    for (size_t i = 0; i < players.size(); i++) {
-      if (i != playerID) {
-        double dx = players[i].posX - currentPlayer.posX;
-        double dy = players[i].posY - currentPlayer.posY;
-        double distance =
-            dx * dx + dy * dy; // Use squared distance for efficiency
+        // Sort sprites by distance (furthest first)
+        std::vector<Sprite> spriteList;
+        for (size_t i = 0; i < players.size(); i++) {
+            if (i != playerID) {
+                double dx = players[i].posX - currentPlayer.posX;
+                double dy = players[i].posY - currentPlayer.posY;
+                double distance = dx * dx + dy * dy; // Use squared distance for efficiency
+                
+                spriteList.push_back(Sprite(players[i].posX, players[i].posY, distance, &playerSprite, i));
+                // spriteList.push_back(Sprite(players[i].posX, players[i].posY, distance, &playerSprite));
+                // spriteList.push_back({players[i].posX, players[i].posY, distance, playerSprite});
+            }
+        }
 
-        spriteList.push_back(
-            Sprite(players[i].posX, players[i].posY, distance, &playerSprite));
-        // spriteList.push_back({players[i].posX, players[i].posY, distance,
-        // playerSprite});
-      }
-    }
+        std::sort(spriteList.begin(), spriteList.end(), [](const Sprite& a, const Sprite& b) {
+            return a.distance > b.distance; // Render closest last
+        });
 
-    std::sort(spriteList.begin(), spriteList.end(),
-              [](const Sprite &a, const Sprite &b) {
-                return a.distance > b.distance; // Render closest last
-              });
+        SDL_Rect srcRect, destRect; // ✅ Declare rects before using them
 
     // Render sprites with per-pixel visibility check
     for (const auto &sprite : spriteList) {
@@ -321,24 +320,60 @@ private:
       drawStartX = std::max(0, drawStartX);
       drawEndX = std::min(SCREEN_WIDTH - 1, drawEndX);
 
-      SDL_Rect srcRect = getWalkingFrame(*sprite.spriteSheet);
+            // for (const auto& sprite : spriteList) {
+                int playerIndex = sprite.playerIndex;
 
-      for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
-        if (stripe < 0 || stripe >= SCREEN_WIDTH)
-          continue; // Skip out-of-bounds
+                // Get the other player's direction
+                double otherDirX = players[playerIndex].dirX;
+                double otherDirY = players[playerIndex].dirY;
 
-        if (transformY > zBuffer[stripe])
-          continue;
+                // Get current player's right direction
+                double cameraRightX = currentPlayer.planeX;
+                double cameraRightY = currentPlayer.planeY;
 
-        SDL_Rect columnRect = {stripe, drawStartY, 1,
-                               spriteHeight}; // Render 1px wide column
-        int texX = (int)((stripe - drawStartX) * (float)srcRect.w /
-                         (drawEndX - drawStartX));
-        SDL_Rect srcColumn = {srcRect.x + texX, srcRect.y, 1, srcRect.h};
+                // Compute dot product to determine flipping
+                double dotProduct = (otherDirX * cameraRightX) + (otherDirY * cameraRightY);
+                bool shouldFlip = dotProduct < 0;  // ✅ Flip if looking left relative to us
 
-        SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcColumn,
-                       &columnRect);
-      }
+                // ✅ Get the correct walking frame
+                SDL_Rect srcRect = getWalkingFrame(*sprite.spriteSheet, players[playerIndex].isMoving);
+
+                // ✅ Ensure valid dimensions
+                if (srcRect.w == 0 || srcRect.h == 0) {
+                    std::cerr << "Warning: srcRect has invalid dimensions!" << std::endl;
+                    continue;
+                }
+
+                // ✅ Ensure `SDL_RenderCopyEx` is actually being used
+                SDL_RendererFlip flipType = shouldFlip ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+
+                // std::cout << "Rendering Player " << playerIndex << " Flip: " << (shouldFlip ? "YES" : "NO") << std::endl;
+
+                // ✅ Apply the flipping transformation
+                SDL_RenderCopyEx(renderer, sprite.spriteSheet->texture, &srcRect, &destRect, 0, NULL, flipType);
+            // }
+            for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
+                if (stripe < 0 || stripe >= SCREEN_WIDTH) continue;  // Skip out-of-bounds pixels
+
+                if (transformY > zBuffer[stripe]) continue;  // ✅ Skip if behind a wall
+
+                // ✅ Reverse texture column selection when flipping
+                int texX;
+                if (shouldFlip) {
+                    texX = srcRect.x + srcRect.w - (int)((stripe - drawStartX) * (float)srcRect.w / (drawEndX - drawStartX)) - 1;
+                } else {
+                    texX = srcRect.x + (int)((stripe - drawStartX) * (float)srcRect.w / (drawEndX - drawStartX));
+                }
+
+                SDL_Rect srcColumn = {texX, srcRect.y, 1, srcRect.h}; // Select 1px slice of sprite
+                SDL_Rect columnRect = {stripe, drawStartY, 1, spriteHeight}; // Render 1px wide column
+
+                SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcColumn, &columnRect);
+            }
+
+
+
+
 
       // for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
       //     if (transformY > zBuffer[stripe]) continue; // Only remove parts
@@ -537,18 +572,18 @@ public:
 
       handleInput();
 
-      ENetEvent event;
-      while (enet_host_service(client, &event, 0) > 0) {
-        switch (event.type) {
-        case ENET_EVENT_TYPE_RECEIVE: {
-          if (event.packet->dataLength == sizeof(uint8_t)) {
-            // This is the initial player ID assignment
-            playerID = *(uint8_t *)event.packet->data;
-            std::cout << "Assigned player ID: " << (int)playerID << std::endl;
-          } else if (event.packet->dataLength == sizeof(PositionPacket)) {
-            // This is a position update
-            PositionPacket *pos = (PositionPacket *)event.packet->data;
-            players[pos->playerID] = pos->state;
+            ENetEvent event;
+            while (enet_host_service(client, &event, 0) > 0) {
+                switch (event.type) {
+                    case ENET_EVENT_TYPE_RECEIVE: {
+                        if (event.packet->dataLength == sizeof(uint8_t)) {
+                            // This is the initial player ID assignment
+                            playerID = *(uint8_t*)event.packet->data;
+                            std::cout << "Assigned player ID: " << (int)playerID << std::endl;
+                        } else if (event.packet->dataLength == sizeof(PositionPacket)) {
+                            // This is a position update
+                            PositionPacket* pos = (PositionPacket*)event.packet->data;
+                            players[pos->playerID] = pos->state;
           } else if (event.packet->dataLength ==
                      sizeof(HitNotificationPacket)) {
             // This is a hit notification
@@ -563,18 +598,18 @@ public:
                         << std::endl;
               // Here you can add visual/audio feedback for successful hit
             }
-          }
-          enet_packet_destroy(event.packet);
-          break;
-        }
-        case ENET_EVENT_TYPE_DISCONNECT:
-          std::cout << "Disconnected from server" << std::endl;
-          isRunning = false;
-          break;
-        default:
-          break;
-        }
-      }
+                        }
+                        enet_packet_destroy(event.packet);
+                        break;
+                    }
+                    case ENET_EVENT_TYPE_DISCONNECT:
+                        std::cout << "Disconnected from server" << std::endl;
+                        isRunning = false;
+                        break;
+                    default:
+                        break;
+                }
+            }
 
       render();
 

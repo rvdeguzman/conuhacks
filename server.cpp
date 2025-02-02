@@ -18,6 +18,9 @@ private:
   void updatePlayerState(size_t playerIndex, const InputPacket &input) {
     PlayerState &player = players[playerIndex];
 
+        double prevX = player.posX;
+        double prevY = player.posY;
+        
     // Calculate delta time in seconds
     double currentTime = enet_time_get() / 1000.0; // Convert to seconds
     double deltaTime = currentTime - lastTime;
@@ -67,6 +70,8 @@ if (input.strafeRight) {
       player.posX -= player.dirY * moveSpeed;
       player.posY += player.dirX * moveSpeed;
     }
+            player.isMoving = (player.posX != prevX || player.posY != prevY);
+
   }
 
 public:
