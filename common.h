@@ -26,10 +26,11 @@ struct InputPacket {
     uint8_t type = PLAYER_INPUT;
     bool up;
     bool down;
-    bool left;
-    bool right;
+    bool strafeLeft;
+    bool strafeRight;
     double mouseRotation;
 };
+
 
 struct PositionPacket {
     uint8_t type = PLAYER_POSITION;

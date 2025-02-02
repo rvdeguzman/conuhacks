@@ -12,10 +12,10 @@ const int SCREEN_HEIGHT = 480;
 const int MAP_WIDTH = 8;
 const int MAP_HEIGHT = 8;
 const int MINIMAP_SIZE = 120; // Size of the minimap
-const double MOUSE_SENSITIVITY = 0.003; // Adjust this to change mouse sensitivity
 const char* SERVER_HOST = "127.0.0.1";
 //const char* SERVER_HOST = "192.168.163.247";
 const int SERVER_PORT = 1234;
+const double MOUSE_SENSITIVITY = 0.003;
 
 // Define the map (1 represents walls, 0 represents empty space)
 const int worldMap[MAP_WIDTH][MAP_HEIGHT] = {
@@ -39,36 +39,33 @@ private:
     size_t playerID;
     bool isRunning;
     SDL_Texture* playerTexture;
-    int previousMouseX;
-    bool firstMouse;
 
 
     void handleInput() {
         const Uint8* state = SDL_GetKeyboardState(NULL);
         
         InputPacket input;
-        input.up = state[SDL_SCANCODE_UP];
-        input.down = state[SDL_SCANCODE_DOWN];
-        input.left = state[SDL_SCANCODE_LEFT];
-        input.right = state[SDL_SCANCODE_RIGHT];
-
-        int mouseX, mouseY;
-        SDL_GetMouseState(&mouseX, &mouseY);
+        input.up = state[SDL_SCANCODE_UP] || state[SDL_SCANCODE_W];
+        input.down = state[SDL_SCANCODE_DOWN] || state[SDL_SCANCODE_S];
         
-        if (firstMouse) {
-            previousMouseX = mouseX;
-            firstMouse = false;
-        }
-
-       // Calculate mouse movement and rotate view
-        int mouseDelta = mouseX - previousMouseX;
-        if (abs(mouseDelta) > 0) {
-            input.mouseRotation = mouseDelta * MOUSE_SENSITIVITY;
+        // Calculate the perpendicular direction vector for strafing
+        // For left/right movement, we use the perpendicular of the direction vector
+        // right = (dirY, -dirX), left = (-dirY, dirX)
+        if (state[SDL_SCANCODE_LEFT] || state[SDL_SCANCODE_A]) {
+            input.strafeLeft = true;
+            input.strafeRight = false;
+        } else if (state[SDL_SCANCODE_RIGHT] || state[SDL_SCANCODE_D]) {
+            input.strafeLeft = false;
+            input.strafeRight = true;
         } else {
-            input.mouseRotation = 0.0;
+            input.strafeLeft = false;
+            input.strafeRight = false;
         }
         
-        previousMouseX = mouseX;
+        // Mouse still handles rotation
+        int mouseXRel, mouseYRel;
+        SDL_GetRelativeMouseState(&mouseXRel, &mouseYRel);
+        input.mouseRotation = -mouseXRel * MOUSE_SENSITIVITY;
 
         ENetPacket* packet = enet_packet_create(
             &input, 
@@ -256,13 +253,10 @@ private:
     }
 
 public:
-    GameClient() : isRunning(false), firstMouse(true) {
+    GameClient() : isRunning(false){
         if (SDL_Init(SDL_INIT_VIDEO) < 0 || enet_initialize() != 0) {
             throw std::runtime_error("Failed to initialize SDL or ENet");
         }
-
-        // Set relative mouse mode for smoother camera control
-        SDL_SetRelativeMouseMode(SDL_TRUE);
 
         if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
             throw std::runtime_error("SDL2_image initialization failed: " + std::string(IMG_GetError()));
@@ -288,7 +282,6 @@ public:
         } else {
             std::cout << "SDL renderer created successfully!" << std::endl;
         }
-
 
         client = enet_host_create(NULL, 1, 2, 0, 0);
         if (!client) {
@@ -323,6 +316,7 @@ public:
         }
 
         SDL_FreeSurface(tempSurface);
+        SDL_SetRelativeMouseMode(SDL_TRUE);
     }
 
 
@@ -338,11 +332,6 @@ public:
             while (SDL_PollEvent(&e)) {
                 if (e.type == SDL_QUIT) {
                     isRunning = false;
-                }
-                else if (e.type == SDL_KEYDOWN) {
-                    if (e.key.keysym.sym == SDLK_ESCAPE) {
-                        isRunning = false;
-                    }
                 }
             }
 
