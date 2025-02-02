@@ -31,6 +31,7 @@ private:
   const float MOUSE_SENSITIVITY = 0.0008f;
   bool mouseGrabbed = false;
   GameState gameState;
+  double pitch = 0.0;
 
   // Weapon state
   int currentWeapon = 0; // Current weapon type
@@ -48,70 +49,146 @@ private:
 
   void handleInput() {
     const Uint8 *state = SDL_GetKeyboardState(NULL);
-    if (state[SDL_SCANCODE_ESCAPE]) {
-      mouseGrabbed = false;
-      SDL_SetRelativeMouseMode(SDL_FALSE);
-    }
+    // if (state[SDL_SCANCODE_ESCAPE]) {
+    //   mouseGrabbed = false;
+    //   SDL_SetRelativeMouseMode(SDL_FALSE);
+    // }
     InputPacket input;
     input.forward = state[SDL_SCANCODE_W];
     input.backward = state[SDL_SCANCODE_S];
     input.strafeLeft = state[SDL_SCANCODE_A];
     input.strafeRight = state[SDL_SCANCODE_D];
-    input.turnLeft = state[SDL_SCANCODE_LEFT];
-    input.turnRight = state[SDL_SCANCODE_RIGHT];
 
-    int mouseX, mouseY;
-    const Uint32 mouseState = SDL_GetMouseState(&mouseX, &mouseY);
-    if (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT) && !mouseGrabbed) {
-      mouseGrabbed = true;
-      SDL_SetRelativeMouseMode(SDL_TRUE);
-    }
-    int xrel, yrel;
-    SDL_GetRelativeMouseState(&xrel, &yrel);
-
-    if (mouseGrabbed) {
-      input.mouseRotation = xrel * MOUSE_SENSITIVITY;
+    // Calculate the perpendicular direction vector for strafing
+    if (state[SDL_SCANCODE_LEFT] || state[SDL_SCANCODE_A]) {
+        input.strafeLeft = true;
+        input.strafeRight = false;
+    } else if (state[SDL_SCANCODE_RIGHT] || state[SDL_SCANCODE_D]) {
+        input.strafeLeft = false;
+        input.strafeRight = true;
     } else {
-      input.mouseRotation = 0.0;
-      if (state[SDL_SCANCODE_ESCAPE]) {
-        std::cout << "exiting game" << std::endl;
-        isRunning = false;
-      }
+        input.strafeLeft = false;
+        input.strafeRight = false;
+    }
+    
+    // Handle mouse movement for rotation
+    int mouseXRel, mouseYRel;
+    SDL_GetRelativeMouseState(&mouseXRel, &mouseYRel);
 
-      // Handle weapon input
-      if (state[SDL_SCANCODE_SPACE] && !isShooting) {
-        isShooting = true;
-        lastShotTime = SDL_GetTicks();
-        isShooting = true;
-        lastShotTime = SDL_GetTicks();
+    // Horizontal rotation (left/right)
+    double angle = -mouseXRel * MOUSE_SENSITIVITY;
 
-        // Send shot attempt to server
-        ShotAttemptPacket shotPacket;
-        shotPacket.shooterID = playerID;
-        shotPacket.shooterPosX = players[playerID].posX;
-        shotPacket.shooterPosY = players[playerID].posY;
-        shotPacket.shooterDirX = players[playerID].dirX;
-        shotPacket.shooterDirY = players[playerID].dirY;
+    // Rotate the player's direction and camera plane
+    double oldDirX = players[playerID].dirX;
+    players[playerID].dirX = players[playerID].dirX * cos(angle) - players[playerID].dirY * sin(angle);
+    players[playerID].dirY = oldDirX * sin(angle) + players[playerID].dirY * cos(angle);
 
-        ENetPacket *packet = enet_packet_create(
-            &shotPacket, sizeof(ShotAttemptPacket), ENET_PACKET_FLAG_RELIABLE);
-        enet_peer_send(server, 0, packet);
-      }
+    double oldPlaneX = players[playerID].planeX;
+    players[playerID].planeX = players[playerID].planeX * cos(angle) - players[playerID].planeY * sin(angle);
+    players[playerID].planeY = oldPlaneX * sin(angle) + players[playerID].planeY * cos(angle);
 
-      // Weapon switching
-      if (state[SDL_SCANCODE_1])
-        currentWeapon = 0;
-      if (state[SDL_SCANCODE_2])
-        currentWeapon = 1;
-      if (state[SDL_SCANCODE_3])
-        currentWeapon = 2;
-      if (state[SDL_SCANCODE_4])
-        currentWeapon = 3;
+    // Vertical rotation (up/down)
+    pitch += mouseYRel * MOUSE_SENSITIVITY;
+
+    // Clamp the pitch to avoid extreme angles
+    const double MAX_PITCH = 1.5; // Limit pitch to ±1.5 radians (~85 degrees)
+    if (pitch > MAX_PITCH) pitch = MAX_PITCH;
+    if (pitch < -MAX_PITCH) pitch = -MAX_PITCH;
+
+    // Send input to the server
+    input.mouseRotation = angle; // Send horizontal rotation to the server
+    input.mousePitch = pitch;    // Send vertical rotation to the server
+
+    if (state[SDL_SCANCODE_ESCAPE]) {
+      std::cout << "exiting game" << std::endl;
+      isRunning = false;
+    }
+
+    // Handle weapon input
+    if (state[SDL_SCANCODE_SPACE] && !isShooting) {
+      isShooting = true;
+      lastShotTime = SDL_GetTicks();
+      isShooting = true;
+      lastShotTime = SDL_GetTicks();
+
+      // Send shot attempt to server
+      ShotAttemptPacket shotPacket;
+      shotPacket.shooterID = playerID;
+      shotPacket.shooterPosX = players[playerID].posX;
+      shotPacket.shooterPosY = players[playerID].posY;
+      shotPacket.shooterDirX = players[playerID].dirX;
+      shotPacket.shooterDirY = players[playerID].dirY;
+
+      ENetPacket *packet = enet_packet_create(
+          &shotPacket, sizeof(ShotAttemptPacket), ENET_PACKET_FLAG_RELIABLE);
+      enet_peer_send(server, 0, packet);
+    }
+
+    // Weapon switching
+    if (state[SDL_SCANCODE_1])
+      currentWeapon = 0;
+    if (state[SDL_SCANCODE_2])
+      currentWeapon = 1;
+    if (state[SDL_SCANCODE_3])
+      currentWeapon = 2;
+    if (state[SDL_SCANCODE_4])
+      currentWeapon = 3;
+
+    // input.turnLeft = state[SDL_SCANCODE_LEFT];
+    // input.turnRight = state[SDL_SCANCODE_RIGHT];
+
+    // int mouseX, mouseY;
+    // const Uint32 mouseState = SDL_GetMouseState(&mouseX, &mouseY);
+    // if (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT) && !mouseGrabbed) {
+    //   mouseGrabbed = true;
+    //   SDL_SetRelativeMouseMode(SDL_TRUE);
+    // }
+    // int xrel, yrel;
+    // SDL_GetRelativeMouseState(&xrel, &yrel);
+
+    // if (mouseGrabbed) {
+    //   input.mouseRotation = xrel * MOUSE_SENSITIVITY;
+    // } else {
+    //   input.mouseRotation = 0.0;
+    //   if (state[SDL_SCANCODE_ESCAPE]) {
+    //     std::cout << "exiting game" << std::endl;
+    //     isRunning = false;
+    //   }
+
+    //   // Handle weapon input
+    //   if (state[SDL_SCANCODE_SPACE] && !isShooting) {
+    //     isShooting = true;
+    //     lastShotTime = SDL_GetTicks();
+    //     isShooting = true;
+    //     lastShotTime = SDL_GetTicks();
+
+    //     // Send shot attempt to server
+    //     ShotAttemptPacket shotPacket;
+    //     shotPacket.shooterID = playerID;
+    //     shotPacket.shooterPosX = players[playerID].posX;
+    //     shotPacket.shooterPosY = players[playerID].posY;
+    //     shotPacket.shooterDirX = players[playerID].dirX;
+    //     shotPacket.shooterDirY = players[playerID].dirY;
+
+    //     ENetPacket *packet = enet_packet_create(
+    //         &shotPacket, sizeof(ShotAttemptPacket), ENET_PACKET_FLAG_RELIABLE);
+    //     enet_peer_send(server, 0, packet);
+    //   }
+
+    //   // Weapon switching
+    //   if (state[SDL_SCANCODE_1])
+    //     currentWeapon = 0;
+    //   if (state[SDL_SCANCODE_2])
+    //     currentWeapon = 1;
+    //   if (state[SDL_SCANCODE_3])
+    //     currentWeapon = 2;
+    //   if (state[SDL_SCANCODE_4])
+    //     currentWeapon = 3;
 
       ENetPacket *packet = enet_packet_create(&input, sizeof(InputPacket),
                                               ENET_PACKET_FLAG_RELIABLE);
       enet_peer_send(server, 0, packet);
-    }
+    // }
   }
 
   void renderMinimap() {
@@ -275,6 +352,8 @@ private:
       double cameraX = 2 * x / double(SCREEN_WIDTH) - 1;
       double rayDirX = currentPlayer.dirX + currentPlayer.planeX * cameraX;
       double rayDirY = currentPlayer.dirY + currentPlayer.planeY * cameraX;
+
+      double rayDirZ = -pitch;
 
       int mapX = int(currentPlayer.posX);
       int mapY = int(currentPlayer.posY);
@@ -702,6 +781,8 @@ public:
 
         if (lobbyInput == START_GAME_INPUT) {
           gameState = PLAYING;
+          SDL_SetRelativeMouseMode(SDL_TRUE);
+
           // connect_client();
           // sendJoinRequest();
           // std::cout << "Entered lobby!" << std::endl;
@@ -754,6 +835,7 @@ public:
   }
 
   void connect_client() {
+    client = enet_host_create(NULL, 1, 2, 0, 0);
     // Initialize ENet
     std::cout << "Initializing ENet..." << std::endl;
     if (enet_initialize() != 0) {

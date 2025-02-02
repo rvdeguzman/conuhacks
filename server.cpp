@@ -111,43 +111,63 @@ private:
     double newX = player.posX;
     double newY = player.posY;
 
-    if (input.mouseRotation != 0.0) {
-      double rotAmount =
-          -input.mouseRotation; // Negative because screen coordinates
-      double oldDirX = player.dirX;
-      player.dirX = player.dirX * cos(rotAmount) - player.dirY * sin(rotAmount);
-      player.dirY = oldDirX * sin(rotAmount) + player.dirY * cos(rotAmount);
-      double oldPlaneX = player.planeX;
-      player.planeX =
-          player.planeX * cos(rotAmount) - player.planeY * sin(rotAmount);
-      player.planeY =
-          oldPlaneX * sin(rotAmount) + player.planeY * cos(rotAmount);
+    // if (input.mouseRotation != 0.0) {
+    //   double rotAmount =
+    //       -input.mouseRotation; // Negative because screen coordinates
+    //   double oldDirX = player.dirX;
+    //   player.dirX = player.dirX * cos(rotAmount) - player.dirY * sin(rotAmount);
+    //   player.dirY = oldDirX * sin(rotAmount) + player.dirY * cos(rotAmount);
+    //   double oldPlaneX = player.planeX;
+    //   player.planeX =
+    //       player.planeX * cos(rotAmount) - player.planeY * sin(rotAmount);
+    //   player.planeY =
+    //       oldPlaneX * sin(rotAmount) + player.planeY * cos(rotAmount);
+    // }
+
+    // Handle rotation (either from keyboard or mouse)
+    // Mouse rotation is already in radians and already has sensitivity applied
+    double totalRotation = input.mouseRotation;
+    
+    // Apply rotation if any exists
+    if (totalRotation != 0) {
+        double oldDirX = player.dirX;
+        player.dirX = player.dirX * cos(totalRotation) - player.dirY * sin(totalRotation);
+        player.dirY = oldDirX * sin(totalRotation) + player.dirY * cos(totalRotation);
+        double oldPlaneX = player.planeX;
+        player.planeX = player.planeX * cos(totalRotation) - player.planeY * sin(totalRotation);
+        player.planeY = oldPlaneX * sin(totalRotation) + player.planeY * cos(totalRotation);
     }
 
+    // Handle vertical rotation (pitch)
+    player.pitch = input.mousePitch;
+    const double MAX_PITCH = 1.5;
+    if (player.pitch > MAX_PITCH) player.pitch = MAX_PITCH;
+    if (player.pitch < -MAX_PITCH) player.pitch = -MAX_PITCH;
+
     // Handle rotation (no collision check needed)
-    if (input.turnRight) {
-      double oldDirX = player.dirX;
-      player.dirX = player.dirX * cos(-rotSpeed) - player.dirY * sin(-rotSpeed);
-      player.dirY = oldDirX * sin(-rotSpeed) + player.dirY * cos(-rotSpeed);
-      double oldPlaneX = player.planeX;
-      player.planeX =
-          player.planeX * cos(-rotSpeed) - player.planeY * sin(-rotSpeed);
-      player.planeY =
-          oldPlaneX * sin(-rotSpeed) + player.planeY * cos(-rotSpeed);
-    }
-    if (input.turnLeft) {
-      double oldDirX = player.dirX;
-      player.dirX = player.dirX * cos(rotSpeed) - player.dirY * sin(rotSpeed);
-      player.dirY = oldDirX * sin(rotSpeed) + player.dirY * cos(rotSpeed);
-      double oldPlaneX = player.planeX;
-      player.planeX =
-          player.planeX * cos(rotSpeed) - player.planeY * sin(rotSpeed);
-      player.planeY = oldPlaneX * sin(rotSpeed) + player.planeY * cos(rotSpeed);
-    }
+    // if (input.turnRight) {
+    //   double oldDirX = player.dirX;
+    //   player.dirX = player.dirX * cos(-rotSpeed) - player.dirY * sin(-rotSpeed);
+    //   player.dirY = oldDirX * sin(-rotSpeed) + player.dirY * cos(-rotSpeed);
+    //   double oldPlaneX = player.planeX;
+    //   player.planeX =
+    //       player.planeX * cos(-rotSpeed) - player.planeY * sin(-rotSpeed);
+    //   player.planeY =
+    //       oldPlaneX * sin(-rotSpeed) + player.planeY * cos(-rotSpeed);
+    // }
+    // if (input.turnLeft) {
+    //   double oldDirX = player.dirX;
+    //   player.dirX = player.dirX * cos(rotSpeed) - player.dirY * sin(rotSpeed);
+    //   player.dirY = oldDirX * sin(rotSpeed) + player.dirY * cos(rotSpeed);
+    //   double oldPlaneX = player.planeX;
+    //   player.planeX =
+    //       player.planeX * cos(rotSpeed) - player.planeY * sin(rotSpeed);
+    //   player.planeY = oldPlaneX * sin(rotSpeed) + player.planeY * cos(rotSpeed);
+    // }
 
     // Handle movement with collision detection
     if (input.forward) {
-      std::cout << "moving forward" << std::endl;
+      // std::cout << "moving forward" << std::endl;
       newX = player.posX + player.dirX * moveSpeed;
       newY = player.posY + player.dirY * moveSpeed;
     }
@@ -211,6 +231,7 @@ public:
     p1.dirY = 0.0;
     p1.planeX = 0.0;
     p1.planeY = 0.66;
+    p1.pitch = 0.0;
 
     PlayerState p2;
     p2.posX = 14.0;
@@ -220,6 +241,7 @@ public:
     p2.dirY = 0.0;
     p2.planeX = 0.0;
     p2.planeY = 0.66;
+    p2.pitch = 0.0;
     // players.push_back(p1);
     // players.push_back(p2);
   }
@@ -457,27 +479,39 @@ public:
           break;
         }
         case ENET_EVENT_TYPE_RECEIVE: {
-            InputPacket* input = (InputPacket*)event.packet->data;
-            size_t playerIndex = (size_t)event.peer->data;
+          size_t playerIndex = (size_t)event.peer->data;
+
+          // Check packet size to determine type
+          if (event.packet->dataLength == sizeof(InputPacket)) {
+            // Handle movement input
+            InputPacket *input = (InputPacket *)event.packet->data;
             updatePlayerState(playerIndex, *input);
-            
+
             // Broadcast updated positions to all clients
             for (size_t i = 0; i < players.size(); i++) {
-                PositionPacket posPacket;
-                posPacket.playerID = i;
-                posPacket.state = players[i];
-                
-                ENetPacket* packet = enet_packet_create(
-                    &posPacket, 
-                    sizeof(PositionPacket), 
-                    ENET_PACKET_FLAG_RELIABLE
-                );
-                enet_host_broadcast(server, 0, packet);
+              PositionPacket posPacket;
+              posPacket.playerID = i;
+              posPacket.state = players[i];
+
+              ENetPacket *packet =
+                  enet_packet_create(&posPacket, sizeof(PositionPacket),
+                                     ENET_PACKET_FLAG_RELIABLE);
+              enet_host_broadcast(server, 0, packet);
             }
-            
-            enet_packet_destroy(event.packet);
-            break;
-}
+          } else if (event.packet->dataLength == sizeof(ShotAttemptPacket)) {
+            // Handle shot attempt
+            ShotAttemptPacket *shotPacket =
+                (ShotAttemptPacket *)event.packet->data;
+            handleShot(*shotPacket, players);
+          } else if (event.packet->dataLength == 5 &&
+                     memcmp(event.packet->data, "JOIN", 4) == 0) {
+            // Handle join request
+            broadcastLobbyUpdate();
+          }
+
+          enet_packet_destroy(event.packet);
+          break;
+        }
 
         case ENET_EVENT_TYPE_DISCONNECT: {
           std::cout << "Client disconnected" << std::endl;

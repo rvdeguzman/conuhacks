@@ -11,7 +11,7 @@ const int MAP_HEIGHT = 24;
 const int worldMap[MAP_WIDTH][MAP_HEIGHT] = {
     {4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4},
     {4, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4},
-    {4, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 4},
+    {4, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 4},
     {4, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 4},
     {4, 0, 2, 2, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 4},
     {4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 4},
@@ -59,6 +59,7 @@ bool isAdmin;
   double planeX;
   double planeY;
   bool isMoving;
+  double pitch;
     
   PlayerState()
       : posX(2.0), posY(2.0), dirX(-1.0), dirY(0.0), planeX(0.0), planeY(0.66),
@@ -74,6 +75,7 @@ struct InputPacket {
   bool turnLeft;
   bool turnRight;
   double mouseRotation;
+  double mousePitch;
 };
 
 struct ShotAttemptPacket {
@@ -99,6 +101,7 @@ struct PositionPacket {
   uint8_t type = PLAYER_POSITION;
   uint8_t playerID;
   PlayerState state;
+  double pitch;
 };
 
 // Packet to update the lobby with players' info
