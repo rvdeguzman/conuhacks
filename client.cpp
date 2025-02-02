@@ -256,26 +256,25 @@ private:
       }
     }
 
-    // Sort sprites by distance (furthest first)
-    std::vector<Sprite> spriteList;
-    for (size_t i = 0; i < players.size(); i++) {
-      if (i != playerID) {
-        double dx = players[i].posX - currentPlayer.posX;
-        double dy = players[i].posY - currentPlayer.posY;
-        double distance =
-            dx * dx + dy * dy; // Use squared distance for efficiency
+        // Sort sprites by distance (furthest first)
+        std::vector<Sprite> spriteList;
+        for (size_t i = 0; i < players.size(); i++) {
+            if (i != playerID) {
+                double dx = players[i].posX - currentPlayer.posX;
+                double dy = players[i].posY - currentPlayer.posY;
+                double distance = dx * dx + dy * dy; // Use squared distance for efficiency
+                
+                spriteList.push_back(Sprite(players[i].posX, players[i].posY, distance, &playerSprite, i));
+                // spriteList.push_back(Sprite(players[i].posX, players[i].posY, distance, &playerSprite));
+                // spriteList.push_back({players[i].posX, players[i].posY, distance, playerSprite});
+            }
+        }
 
-        spriteList.push_back(
-            Sprite(players[i].posX, players[i].posY, distance, &playerSprite));
-        // spriteList.push_back({players[i].posX, players[i].posY, distance,
-        // playerSprite});
-      }
-    }
+        std::sort(spriteList.begin(), spriteList.end(), [](const Sprite& a, const Sprite& b) {
+            return a.distance > b.distance; // Render closest last
+        });
 
-    std::sort(spriteList.begin(), spriteList.end(),
-              [](const Sprite &a, const Sprite &b) {
-                return a.distance > b.distance; // Render closest last
-              });
+        SDL_Rect srcRect, destRect; // ✅ Declare rects before using them
 
     // Render sprites with per-pixel visibility check
     for (const auto &sprite : spriteList) {
@@ -309,24 +308,34 @@ private:
       drawStartX = std::max(0, drawStartX);
       drawEndX = std::min(SCREEN_WIDTH - 1, drawEndX);
 
-      SDL_Rect srcRect = getWalkingFrame(*sprite.spriteSheet);
+            for (const auto& sprite : spriteList) {
+                int playerIndex = sprite.playerIndex;
+                
+                // ✅ Ensure `srcRect` is initialized with a valid frame
+                srcRect = getWalkingFrame(*sprite.spriteSheet, players[playerIndex].isMoving);
 
-      for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
-        if (stripe < 0 || stripe >= SCREEN_WIDTH)
-          continue; // Skip out-of-bounds
+                // ✅ Ensure `srcRect` has valid dimensions before using it
+                if (srcRect.w == 0 || srcRect.h == 0) {
+                    std::cerr << "Warning: srcRect has invalid dimensions!" << std::endl;
+                    continue;  // Skip rendering if the sprite is invalid
+                }
 
-        if (transformY > zBuffer[stripe])
-          continue;
+                SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcRect, &destRect);
+            }
+            for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
+                if (stripe < 0 || stripe >= SCREEN_WIDTH) continue; // Skip out-of-bounds
 
-        SDL_Rect columnRect = {stripe, drawStartY, 1,
-                               spriteHeight}; // Render 1px wide column
-        int texX = (int)((stripe - drawStartX) * (float)srcRect.w /
-                         (drawEndX - drawStartX));
-        SDL_Rect srcColumn = {srcRect.x + texX, srcRect.y, 1, srcRect.h};
+                if (transformY > zBuffer[stripe]) continue; // ✅ Only render visible parts
 
-        SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcColumn,
-                       &columnRect);
-      }
+                int texX = (int)((stripe - drawStartX) * (float)srcRect.w / (drawEndX - drawStartX));
+                SDL_Rect srcColumn = {srcRect.x + texX, srcRect.y, 1, srcRect.h};
+                SDL_Rect columnRect = {stripe, drawStartY, 1, spriteHeight};
+
+                SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcColumn, &columnRect);
+            }
+
+
+
 
       // for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
       //     if (transformY > zBuffer[stripe]) continue; // Only remove parts
@@ -525,30 +534,31 @@ public:
 
       handleInput();
 
-      ENetEvent event;
-      while (enet_host_service(client, &event, 0) > 0) {
-        switch (event.type) {
-        case ENET_EVENT_TYPE_RECEIVE: {
-          if (event.packet->dataLength == sizeof(uint8_t)) {
-            // This is the initial player ID assignment
-            playerID = *(uint8_t *)event.packet->data;
-            std::cout << "Assigned player ID: " << (int)playerID << std::endl;
-          } else {
-            // This is a position update
-            PositionPacket *pos = (PositionPacket *)event.packet->data;
-            players[pos->playerID] = pos->state;
-          }
-          enet_packet_destroy(event.packet);
-          break;
-        }
-        case ENET_EVENT_TYPE_DISCONNECT:
-          std::cout << "Disconnected from server" << std::endl;
-          isRunning = false;
-          break;
-        default:
-          break;
-        }
-      }
+            ENetEvent event;
+            while (enet_host_service(client, &event, 0) > 0) {
+                switch (event.type) {
+                    case ENET_EVENT_TYPE_RECEIVE: {
+                        if (event.packet->dataLength == sizeof(uint8_t)) {
+                            // This is the initial player ID assignment
+                            playerID = *(uint8_t*)event.packet->data;
+                            std::cout << "Assigned player ID: " << (int)playerID << std::endl;
+                        } else {
+                            PositionPacket* pos = (PositionPacket*)event.packet->data;
+
+                            // ✅ Copy the entire PlayerState including `isMoving`
+                            players[pos->playerID] = pos->state;
+                        }
+                        enet_packet_destroy(event.packet);
+                        break;
+                    }
+                    case ENET_EVENT_TYPE_DISCONNECT:
+                        std::cout << "Disconnected from server" << std::endl;
+                        isRunning = false;
+                        break;
+                    default:
+                        break;
+                }
+            }
 
       render();
 
