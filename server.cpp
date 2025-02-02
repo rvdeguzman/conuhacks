@@ -30,15 +30,15 @@ private:
     const double moveSpeed = BASE_MOVE_SPEED * deltaTime;
     const double rotSpeed = BASE_ROT_SPEED * deltaTime;
 
-    if (input.up) {
+    if (input.forward) {
       player.posX += player.dirX * moveSpeed;
       player.posY += player.dirY * moveSpeed;
     }
-    if (input.down) {
+    if (input.backward) {
       player.posX -= player.dirX * moveSpeed;
       player.posY -= player.dirY * moveSpeed;
     }
-    if (input.right) {
+    if (input.turnRight) {
       double oldDirX = player.dirX;
       player.dirX = player.dirX * cos(-rotSpeed) - player.dirY * sin(-rotSpeed);
       player.dirY = oldDirX * sin(-rotSpeed) + player.dirY * cos(-rotSpeed);
@@ -48,7 +48,7 @@ private:
       player.planeY =
           oldPlaneX * sin(-rotSpeed) + player.planeY * cos(-rotSpeed);
     }
-    if (input.left) {
+    if (input.turnLeft) {
       double oldDirX = player.dirX;
       player.dirX = player.dirX * cos(rotSpeed) - player.dirY * sin(rotSpeed);
       player.dirY = oldDirX * sin(rotSpeed) + player.dirY * cos(rotSpeed);
@@ -56,6 +56,16 @@ private:
       player.planeX =
           player.planeX * cos(rotSpeed) - player.planeY * sin(rotSpeed);
       player.planeY = oldPlaneX * sin(rotSpeed) + player.planeY * cos(rotSpeed);
+    }
+if (input.strafeRight) {
+      // Move perpendicular to direction vector (rotated 90 degrees counterclockwise)
+      player.posX += player.dirY * moveSpeed;
+      player.posY -= player.dirX * moveSpeed;
+    }
+    if (input.strafeLeft) {
+      // Move perpendicular to direction vector (rotated 90 degrees clockwise)
+      player.posX -= player.dirY * moveSpeed;
+      player.posY += player.dirX * moveSpeed;
     }
   }
 

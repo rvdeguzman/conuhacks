@@ -2,6 +2,7 @@
 #include "common.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_timer.h>
 #include <algorithm>
 #include <cmath>
@@ -53,10 +54,12 @@ private:
     const Uint8 *state = SDL_GetKeyboardState(NULL);
 
     InputPacket input;
-    input.up = state[SDL_SCANCODE_UP];
-    input.down = state[SDL_SCANCODE_DOWN];
-    input.left = state[SDL_SCANCODE_LEFT];
-    input.right = state[SDL_SCANCODE_RIGHT];
+    input.forward = state[SDL_SCANCODE_W];
+    input.backward = state[SDL_SCANCODE_S];
+    input.strafeLeft = state[SDL_SCANCODE_A];
+    input.strafeRight = state[SDL_SCANCODE_D];
+    input.turnLeft = state[SDL_SCANCODE_LEFT];
+    input.turnRight = state[SDL_SCANCODE_RIGHT];
 
     // Handle weapon input
     if (state[SDL_SCANCODE_SPACE] && !isShooting) {
@@ -64,7 +67,7 @@ private:
       lastShotTime = SDL_GetTicks();
       isShooting = true;
       lastShotTime = SDL_GetTicks();
-      
+
       // Send shot attempt to server
       ShotAttemptPacket shotPacket;
       shotPacket.shooterID = playerID;
@@ -73,11 +76,9 @@ private:
       shotPacket.shooterDirX = players[playerID].dirX;
       shotPacket.shooterDirY = players[playerID].dirY;
 
-      ENetPacket* packet = enet_packet_create(&shotPacket, 
-                                            sizeof(ShotAttemptPacket),
-                                            ENET_PACKET_FLAG_RELIABLE);
+      ENetPacket *packet = enet_packet_create(
+          &shotPacket, sizeof(ShotAttemptPacket), ENET_PACKET_FLAG_RELIABLE);
       enet_peer_send(server, 0, packet);
-
     }
 
     // Weapon switching
@@ -89,11 +90,6 @@ private:
       currentWeapon = 2;
     if (state[SDL_SCANCODE_4])
       currentWeapon = 3;
-
-    input.up = state[SDL_SCANCODE_UP];
-    input.down = state[SDL_SCANCODE_DOWN];
-    input.left = state[SDL_SCANCODE_LEFT];
-    input.right = state[SDL_SCANCODE_RIGHT];
 
     ENetPacket *packet = enet_packet_create(&input, sizeof(InputPacket),
                                             ENET_PACKET_FLAG_RELIABLE);
@@ -553,15 +549,19 @@ public:
             // This is a position update
             PositionPacket *pos = (PositionPacket *)event.packet->data;
             players[pos->playerID] = pos->state;
-          } else if (event.packet->dataLength == sizeof(HitNotificationPacket)) {
+          } else if (event.packet->dataLength ==
+                     sizeof(HitNotificationPacket)) {
             // This is a hit notification
-            HitNotificationPacket *hit = (HitNotificationPacket *)event.packet->data;
+            HitNotificationPacket *hit =
+                (HitNotificationPacket *)event.packet->data;
             if (hit->targetID == playerID) {
-                std::cout << "You were hit by player " << hit->shooterID << "!" << std::endl;
-                // Here you can add visual/audio feedback for being hit
+              std::cout << "You were hit by player " << hit->shooterID << "!"
+                        << std::endl;
+              // Here you can add visual/audio feedback for being hit
             } else if (hit->shooterID == playerID) {
-                std::cout << "You hit player " << hit->targetID << "!" << std::endl;
-                // Here you can add visual/audio feedback for successful hit
+              std::cout << "You hit player " << hit->targetID << "!"
+                        << std::endl;
+              // Here you can add visual/audio feedback for successful hit
             }
           }
           enet_packet_destroy(event.packet);
