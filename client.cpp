@@ -308,31 +308,57 @@ private:
       drawStartX = std::max(0, drawStartX);
       drawEndX = std::min(SCREEN_WIDTH - 1, drawEndX);
 
-            for (const auto& sprite : spriteList) {
+            // for (const auto& sprite : spriteList) {
                 int playerIndex = sprite.playerIndex;
-                
-                // ✅ Ensure `srcRect` is initialized with a valid frame
-                srcRect = getWalkingFrame(*sprite.spriteSheet, players[playerIndex].isMoving);
 
-                // ✅ Ensure `srcRect` has valid dimensions before using it
+                // Get the other player's direction
+                double otherDirX = players[playerIndex].dirX;
+                double otherDirY = players[playerIndex].dirY;
+
+                // Get current player's right direction
+                double cameraRightX = currentPlayer.planeX;
+                double cameraRightY = currentPlayer.planeY;
+
+                // Compute dot product to determine flipping
+                double dotProduct = (otherDirX * cameraRightX) + (otherDirY * cameraRightY);
+                bool shouldFlip = dotProduct < 0;  // ✅ Flip if looking left relative to us
+
+                // ✅ Get the correct walking frame
+                SDL_Rect srcRect = getWalkingFrame(*sprite.spriteSheet, players[playerIndex].isMoving);
+
+                // ✅ Ensure valid dimensions
                 if (srcRect.w == 0 || srcRect.h == 0) {
                     std::cerr << "Warning: srcRect has invalid dimensions!" << std::endl;
-                    continue;  // Skip rendering if the sprite is invalid
+                    continue;
                 }
 
-                SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcRect, &destRect);
-            }
+                // ✅ Ensure `SDL_RenderCopyEx` is actually being used
+                SDL_RendererFlip flipType = shouldFlip ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+
+                // std::cout << "Rendering Player " << playerIndex << " Flip: " << (shouldFlip ? "YES" : "NO") << std::endl;
+
+                // ✅ Apply the flipping transformation
+                SDL_RenderCopyEx(renderer, sprite.spriteSheet->texture, &srcRect, &destRect, 0, NULL, flipType);
+            // }
             for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
-                if (stripe < 0 || stripe >= SCREEN_WIDTH) continue; // Skip out-of-bounds
+                if (stripe < 0 || stripe >= SCREEN_WIDTH) continue;  // Skip out-of-bounds pixels
 
-                if (transformY > zBuffer[stripe]) continue; // ✅ Only render visible parts
+                if (transformY > zBuffer[stripe]) continue;  // ✅ Skip if behind a wall
 
-                int texX = (int)((stripe - drawStartX) * (float)srcRect.w / (drawEndX - drawStartX));
-                SDL_Rect srcColumn = {srcRect.x + texX, srcRect.y, 1, srcRect.h};
-                SDL_Rect columnRect = {stripe, drawStartY, 1, spriteHeight};
+                // ✅ Reverse texture column selection when flipping
+                int texX;
+                if (shouldFlip) {
+                    texX = srcRect.x + srcRect.w - (int)((stripe - drawStartX) * (float)srcRect.w / (drawEndX - drawStartX)) - 1;
+                } else {
+                    texX = srcRect.x + (int)((stripe - drawStartX) * (float)srcRect.w / (drawEndX - drawStartX));
+                }
+
+                SDL_Rect srcColumn = {texX, srcRect.y, 1, srcRect.h}; // Select 1px slice of sprite
+                SDL_Rect columnRect = {stripe, drawStartY, 1, spriteHeight}; // Render 1px wide column
 
                 SDL_RenderCopy(renderer, sprite.spriteSheet->texture, &srcColumn, &columnRect);
             }
+
 
 
 
@@ -543,9 +569,8 @@ public:
                             playerID = *(uint8_t*)event.packet->data;
                             std::cout << "Assigned player ID: " << (int)playerID << std::endl;
                         } else {
+                            // This is a position update
                             PositionPacket* pos = (PositionPacket*)event.packet->data;
-
-                            // ✅ Copy the entire PlayerState including `isMoving`
                             players[pos->playerID] = pos->state;
                         }
                         enet_packet_destroy(event.packet);
