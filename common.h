@@ -43,13 +43,6 @@ const SDL_Keycode ENTER_LOBBY_INPUT = SDLK_PLUS;
 const SDL_Keycode START_GAME_INPUT = SDLK_RETURN;
 const SDL_Keycode END_GAME_INPUT = SDLK_ESCAPE;
 
-
-// struct Player {
-//       // Indicate if the player is an admin
-//     double posX, posY; // Position on the screen
-//     // Other player data like team, score, etc.
-// };
-
 struct PlayerState {
 bool isAdmin;
   double posX;
