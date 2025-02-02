@@ -31,6 +31,19 @@ struct InputPacket {
     double mouseRotation;
 };
 
+struct ShotAttemptPacket {
+    size_t shooterID;
+    double shooterPosX;
+    double shooterPosY;
+    double shooterDirX;
+    double shooterDirY;
+};
+
+struct HitNotificationPacket {
+    size_t shooterID;
+    size_t targetID;
+};
+
 struct PositionPacket {
     uint8_t type = PLAYER_POSITION;
     uint8_t playerID;

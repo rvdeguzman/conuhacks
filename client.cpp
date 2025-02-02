@@ -62,6 +62,22 @@ private:
     if (state[SDL_SCANCODE_SPACE] && !isShooting) {
       isShooting = true;
       lastShotTime = SDL_GetTicks();
+      isShooting = true;
+      lastShotTime = SDL_GetTicks();
+      
+      // Send shot attempt to server
+      ShotAttemptPacket shotPacket;
+      shotPacket.shooterID = playerID;
+      shotPacket.shooterPosX = players[playerID].posX;
+      shotPacket.shooterPosY = players[playerID].posY;
+      shotPacket.shooterDirX = players[playerID].dirX;
+      shotPacket.shooterDirY = players[playerID].dirY;
+
+      ENetPacket* packet = enet_packet_create(&shotPacket, 
+                                            sizeof(ShotAttemptPacket),
+                                            ENET_PACKET_FLAG_RELIABLE);
+      enet_peer_send(server, 0, packet);
+
     }
 
     // Weapon switching
@@ -533,10 +549,20 @@ public:
             // This is the initial player ID assignment
             playerID = *(uint8_t *)event.packet->data;
             std::cout << "Assigned player ID: " << (int)playerID << std::endl;
-          } else {
+          } else if (event.packet->dataLength == sizeof(PositionPacket)) {
             // This is a position update
             PositionPacket *pos = (PositionPacket *)event.packet->data;
             players[pos->playerID] = pos->state;
+          } else if (event.packet->dataLength == sizeof(HitNotificationPacket)) {
+            // This is a hit notification
+            HitNotificationPacket *hit = (HitNotificationPacket *)event.packet->data;
+            if (hit->targetID == playerID) {
+                std::cout << "You were hit by player " << hit->shooterID << "!" << std::endl;
+                // Here you can add visual/audio feedback for being hit
+            } else if (hit->shooterID == playerID) {
+                std::cout << "You hit player " << hit->targetID << "!" << std::endl;
+                // Here you can add visual/audio feedback for successful hit
+            }
           }
           enet_packet_destroy(event.packet);
           break;
