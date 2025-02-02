@@ -15,6 +15,7 @@ struct PlayerState {
     double dirY;
     double planeX;
     double planeY;
+    double pitch;
 
     PlayerState() : 
         posX(2.0), posY(2.0),
@@ -29,6 +30,7 @@ struct InputPacket {
     bool strafeLeft;
     bool strafeRight;
     double mouseRotation;
+    double mousePitch;
 };
 
 
@@ -36,5 +38,6 @@ struct PositionPacket {
     uint8_t type = PLAYER_POSITION;
     uint8_t playerID;
     PlayerState state;
+    double pitch;
 };
 

@@ -39,6 +39,7 @@ private:
     size_t playerID;
     bool isRunning;
     SDL_Texture* playerTexture;
+    double pitch = 0.0;
 
 
     void handleInput() {
@@ -49,8 +50,6 @@ private:
         input.down = state[SDL_SCANCODE_DOWN] || state[SDL_SCANCODE_S];
         
         // Calculate the perpendicular direction vector for strafing
-        // For left/right movement, we use the perpendicular of the direction vector
-        // right = (dirY, -dirX), left = (-dirY, dirX)
         if (state[SDL_SCANCODE_LEFT] || state[SDL_SCANCODE_A]) {
             input.strafeLeft = true;
             input.strafeRight = false;
@@ -62,10 +61,33 @@ private:
             input.strafeRight = false;
         }
         
-        // Mouse still handles rotation
+        // Handle mouse movement for rotation
         int mouseXRel, mouseYRel;
         SDL_GetRelativeMouseState(&mouseXRel, &mouseYRel);
-        input.mouseRotation = -mouseXRel * MOUSE_SENSITIVITY;
+
+        // Horizontal rotation (left/right)
+        double angle = -mouseXRel * MOUSE_SENSITIVITY;
+
+        // Rotate the player's direction and camera plane
+        double oldDirX = players[playerID].dirX;
+        players[playerID].dirX = players[playerID].dirX * cos(angle) - players[playerID].dirY * sin(angle);
+        players[playerID].dirY = oldDirX * sin(angle) + players[playerID].dirY * cos(angle);
+
+        double oldPlaneX = players[playerID].planeX;
+        players[playerID].planeX = players[playerID].planeX * cos(angle) - players[playerID].planeY * sin(angle);
+        players[playerID].planeY = oldPlaneX * sin(angle) + players[playerID].planeY * cos(angle);
+
+        // Vertical rotation (up/down)
+        pitch += mouseYRel * MOUSE_SENSITIVITY;
+
+        // Clamp the pitch to avoid extreme angles
+        const double MAX_PITCH = 1.5; // Limit pitch to ±1.5 radians (~85 degrees)
+        if (pitch > MAX_PITCH) pitch = MAX_PITCH;
+        if (pitch < -MAX_PITCH) pitch = -MAX_PITCH;
+
+        // Send input to the server
+        input.mouseRotation = angle; // Send horizontal rotation to the server
+        input.mousePitch = pitch;    // Send vertical rotation to the server
 
         ENetPacket* packet = enet_packet_create(
             &input, 
@@ -151,6 +173,9 @@ private:
             double rayDirX = currentPlayer.dirX + currentPlayer.planeX * cameraX;
             double rayDirY = currentPlayer.dirY + currentPlayer.planeY * cameraX;
 
+            // Apply vertical rotation (pitch)
+            double rayDirZ = -pitch; // Adjust ray direction for vertical look
+
             int mapX = int(currentPlayer.posX);
             int mapY = int(currentPlayer.posY);
 
@@ -199,9 +224,9 @@ private:
                 perpWallDist = (mapY - currentPlayer.posY + (1.0 - stepY) / 2.0) / rayDirY;
 
             int lineHeight = (int)(SCREEN_HEIGHT / perpWallDist);
-            int drawStart = -lineHeight / 2 + SCREEN_HEIGHT / 2;
+            int drawStart = -lineHeight / 2 + SCREEN_HEIGHT / 2 + (int)(rayDirZ * SCREEN_HEIGHT / 2);
             if (drawStart < 0) drawStart = 0;
-            int drawEnd = lineHeight / 2 + SCREEN_HEIGHT / 2;
+            int drawEnd = lineHeight / 2 + SCREEN_HEIGHT / 2 + (int)(rayDirZ * SCREEN_HEIGHT / 2);
             if (drawEnd >= SCREEN_HEIGHT) drawEnd = SCREEN_HEIGHT - 1;
 
             // Choose wall color
@@ -230,9 +255,9 @@ private:
                 int spriteScreenX = int((SCREEN_WIDTH / 2) * (1 + transformX / transformY));
 
                 int spriteHeight = abs(int(SCREEN_HEIGHT / transformY));
-                int drawStartY = -spriteHeight / 2 + SCREEN_HEIGHT / 2;
+                int drawStartY = -spriteHeight / 2 + SCREEN_HEIGHT / 2 + (int)(pitch * SCREEN_HEIGHT / 2);
                 if (drawStartY < 0) drawStartY = 0;
-                int drawEndY = spriteHeight / 2 + SCREEN_HEIGHT / 2;
+                int drawEndY = spriteHeight / 2 + SCREEN_HEIGHT / 2 + (int)(pitch * SCREEN_HEIGHT / 2);
                 if (drawEndY >= SCREEN_HEIGHT) drawEndY = SCREEN_HEIGHT - 1;
 
                 int spriteWidth = abs(int(SCREEN_HEIGHT / transformY));

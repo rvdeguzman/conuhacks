@@ -61,6 +61,12 @@ private:
             player.planeX = player.planeX * cos(totalRotation) - player.planeY * sin(totalRotation);
             player.planeY = oldPlaneX * sin(totalRotation) + player.planeY * cos(totalRotation);
         }
+
+        // Handle vertical rotation (pitch)
+        player.pitch = input.mousePitch;
+        const double MAX_PITCH = 1.5;
+        if (player.pitch > MAX_PITCH) player.pitch = MAX_PITCH;
+        if (player.pitch < -MAX_PITCH) player.pitch = -MAX_PITCH;
     }
 
 public:
@@ -88,6 +94,7 @@ public:
         p1.dirY = 0.0;
         p1.planeX = 0.0;
         p1.planeY = 0.66;
+        p1.pitch = 0.0;
 
         PlayerState p2;
         p2.posX = 6.0;
@@ -96,6 +103,7 @@ public:
         p2.dirY = 0.0;
         p2.planeX = 0.0;
         p2.planeY = 0.66;
+        p2.pitch = 0.0;
         players.push_back(p1);
         players.push_back(p2);
     }
