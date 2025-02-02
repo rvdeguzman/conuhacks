@@ -18,15 +18,15 @@ const char *SERVER_HOST = "127.0.0.1";
 const int SERVER_PORT = 1234;
 
 // Define the map (1 represents walls, 0 represents empty space)
-const int worldMap[MAP_WIDTH][MAP_HEIGHT] = {
-    {1, 1, 1, 1, 1, 1, 1, 1},
-    {1, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 1, 0, 0, 1, 0, 1},
-    {1, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 1, 0, 0, 1, 0, 1},
-    {1, 0, 1, 0, 0, 1, 0, 1},
-    {1, 0, 0, 0, 0, 0, 0, 1},
-    {1, 1, 1, 1, 1, 1, 1, 1}};
+// const int worldMap[MAP_WIDTH][MAP_HEIGHT] = {
+//     {1, 1, 1, 1, 1, 1, 1, 1},
+//     {1, 0, 0, 0, 0, 0, 0, 1},
+//     {1, 0, 1, 0, 0, 1, 0, 1},
+//     {1, 0, 0, 0, 0, 0, 0, 1},
+//     {1, 0, 1, 0, 0, 1, 0, 1},
+//     {1, 0, 1, 0, 0, 1, 0, 1},
+//     {1, 0, 0, 0, 0, 0, 0, 1},
+//     {1, 1, 1, 1, 1, 1, 1, 1}};
 
 class GameClient
 {
@@ -88,7 +88,7 @@ private:
         if (players.empty())
             return;
 
-        const int cellSize = MINIMAP_SIZE / MAP_WIDTH;
+        // const int cellSize = MINIMAP_SIZE / MAP_WIDTH;
         const int minimapX = SCREEN_WIDTH - MINIMAP_SIZE - 10;
         const int minimapY = 10;
 
@@ -157,6 +157,9 @@ private:
 
         // Render from current player's perspective
         const PlayerState &currentPlayer = players[playerID];
+
+        // Calculate cellSize here (for bullets and minimap)
+        const int cellSize = MINIMAP_SIZE / MAP_WIDTH;
 
         // Raycasting
         for (int x = 0; x < SCREEN_WIDTH; x++)
@@ -290,7 +293,8 @@ private:
             SDL_RenderFillRect(renderer, &bulletRect);
         }
 
-        renderMinimap();
+        // Pass cellSize to renderMinimap()
+        renderMinimap(cellSize); // <-- Pass the value here
 
         SDL_RenderPresent(renderer);
     }
@@ -307,6 +311,15 @@ private:
 
         // Add or update the bullet in the local list
         bullets.push_back(bullet);
+
+        // Remove inactive bullets
+        bullets.erase(
+            std::remove_if(
+                bullets.begin(),
+                bullets.end(),
+                [](const Bullet &b)
+                { return !b.active; }),
+            bullets.end());
     }
 
 public:
