@@ -15,11 +15,13 @@ struct PlayerState {
     double dirY;
     double planeX;
     double planeY;
+    bool isMoving;
 
     PlayerState() : 
         posX(2.0), posY(2.0),
         dirX(-1.0), dirY(0.0),
-        planeX(0.0), planeY(0.66) {}
+        planeX(0.0), planeY(0.66),
+        isMoving(false) {}
 };
 
 struct InputPacket {
