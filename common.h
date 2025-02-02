@@ -2,6 +2,8 @@
 #pragma once
 #include <cstdint>
 #include <enet/enet.h>
+#include <SDL2/SDL.h>
+#include <string>
 
 const int MAP_WIDTH = 24;
 const int MAP_HEIGHT = 24;
@@ -34,7 +36,15 @@ const int worldMap[MAP_WIDTH][MAP_HEIGHT] = {
 
 enum PacketType { PLAYER_POSITION = 1, PLAYER_INPUT };
 
+const int SCREEN_WIDTH = 1024;
+const int SCREEN_HEIGHT = 768;
+
+const SDL_Keycode ENTER_LOBBY_INPUT = SDLK_PLUS;
+const SDL_Keycode START_GAME_INPUT = SDLK_RETURN;
+const SDL_Keycode END_GAME_INPUT = SDLK_ESCAPE;
+
 struct PlayerState {
+bool isAdmin;
   double posX;
   double posY;
   double dirX;
@@ -42,7 +52,7 @@ struct PlayerState {
   double planeX;
   double planeY;
   bool isMoving;
-
+    
   PlayerState()
       : posX(2.0), posY(2.0), dirX(-1.0), dirY(0.0), planeX(0.0), planeY(0.66),
         isMoving(false) {}
@@ -82,4 +92,15 @@ struct PositionPacket {
   uint8_t type = PLAYER_POSITION;
   uint8_t playerID;
   PlayerState state;
+};
+
+// Packet to update the lobby with players' info
+struct LobbyUpdatePacket {
+    uint8_t numPlayers;  // Number of players in the lobby
+    PlayerState players[4];    // Array of players in the lobby
+};
+
+// Packet to start the game
+struct GameStartPacket {
+    bool startGame;  // Whether to start the game or not
 };
