@@ -111,33 +111,102 @@ public:
     players.push_back(p2);
   }
 
-  bool isPlayerHit(const PlayerState &shooter, const PlayerState &target) {
+bool hasWallBetweenPoints(double startX, double startY, double endX, double endY) {
+    // Implementation of Digital Differential Analyzer (DDA) algorithm
+    double dirX = endX - startX;
+    double dirY = endY - startY;
+    double distance = sqrt(dirX * dirX + dirY * dirY);
+    
+    // Normalize direction vector
+    dirX /= distance;
+    dirY /= distance;
+    
+    // Starting map cell
+    int mapX = int(startX);
+    int mapY = int(startY);
+    
+    // Length of ray from one x or y-side to next x or y-side
+    double deltaDistX = std::abs(1.0 / dirX);
+    double deltaDistY = std::abs(1.0 / dirY);
+    
+    // Calculate step and initial sideDist
+    double sideDistX, sideDistY;
+    int stepX, stepY;
+    
+    if (dirX < 0) {
+        stepX = -1;
+        sideDistX = (startX - mapX) * deltaDistX;
+    } else {
+        stepX = 1;
+        sideDistX = (mapX + 1.0 - startX) * deltaDistX;
+    }
+    
+    if (dirY < 0) {
+        stepY = -1;
+        sideDistY = (startY - mapY) * deltaDistY;
+    } else {
+        stepY = 1;
+        sideDistY = (mapY + 1.0 - startY) * deltaDistY;
+    }
+    
+    // Perform DDA
+    double rayLength = 0.0;
+    while (rayLength < distance) {
+        // Jump to next map square
+        if (sideDistX < sideDistY) {
+            rayLength = sideDistX;
+            sideDistX += deltaDistX;
+            mapX += stepX;
+        } else {
+            rayLength = sideDistY;
+            sideDistY += deltaDistY;
+            mapY += stepY;
+        }
+        
+        // Check if ray has hit a wall
+        if (mapX < 0 || mapX >= MAP_WIDTH || mapY < 0 || mapY >= MAP_HEIGHT) {
+            return true; // Hit map boundary
+        }
+        
+        if (worldMap[mapX][mapY] > 0) {
+            return true; // Hit a wall
+        }
+    }
+    
+    return false; // No walls between points
+}
+
+bool isPlayerHit(const PlayerState &shooter, const PlayerState &target) {
     // Calculate vector from shooter to target
     double dx = target.posX - shooter.posX;
     double dy = target.posY - shooter.posY;
-
+    
     // Calculate distance
     double distance = sqrt(dx * dx + dy * dy);
-    if (distance > 8.0)
-      return false; // Maximum shooting distance
-
+    if (distance > 8.0) return false; // Maximum shooting distance
+    
     // Normalize the direction vector
-    double dirLength =
-        sqrt(shooter.dirX * shooter.dirX + shooter.dirY * shooter.dirY);
+    double dirLength = sqrt(shooter.dirX * shooter.dirX + shooter.dirY * shooter.dirY);
     double normalizedDirX = shooter.dirX / dirLength;
     double normalizedDirY = shooter.dirY / dirLength;
-
+    
     // Normalize the vector to target
     double normalizedDx = dx / distance;
     double normalizedDy = dy / distance;
-
+    
     // Calculate dot product to get cosine of angle
-    double dotProduct =
-        normalizedDirX * normalizedDx + normalizedDirY * normalizedDy;
-
-    // within 10 degrees of center (cos(10°) ≈ 0.984)
-    return dotProduct > 0.984;
-  }
+    double dotProduct = normalizedDirX * normalizedDx + normalizedDirY * normalizedDy;
+    
+    // Check if target is within shooting angle (within 10 degrees of center)
+    if (dotProduct <= 0.984) return false; // cos(10°) ≈ 0.984
+    
+    // Check if there's a wall between shooter and target
+    if (hasWallBetweenPoints(shooter.posX, shooter.posY, target.posX, target.posY)) {
+        return false; // Can't shoot through walls
+    }
+    
+    return true;
+}
 
   void handleShot(const ShotAttemptPacket &shotPacket,
                   std::vector<PlayerState> &players) {
