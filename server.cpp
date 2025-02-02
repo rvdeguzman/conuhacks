@@ -52,10 +52,12 @@ private:
         if (input.shoot)
         {
             Bullet bullet;
+            // Spawn bullet slightly in front of the player (0.5 units)
             bullet.posX = players[playerIndex].posX + players[playerIndex].dirX * 0.5;
             bullet.posY = players[playerIndex].posY + players[playerIndex].dirY * 0.5;
-            bullet.dirX = players[playerIndex].dirX;
-            bullet.dirY = players[playerIndex].dirY;
+            // Give bullets some initial velocity (0.2 units per frame)
+            bullet.dirX = players[playerIndex].dirX * 0.2;
+            bullet.dirY = players[playerIndex].dirY * 0.2;
             bullet.active = true;
             bullets.push_back(bullet);
         }

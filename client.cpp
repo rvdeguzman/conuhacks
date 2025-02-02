@@ -281,22 +281,35 @@ private:
         }
 
         // Render bullets
-        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255); // Red color for bullets
         for (const auto &bullet : bullets)
         {
             if (!bullet.active)
                 continue;
+
+            // Calculate bullet position relative to current player
+            double spriteX = bullet.posX - currentPlayer.posX;
+            double spriteY = bullet.posY - currentPlayer.posY;
+
+            // Transformation matrix
+            double invDet = 1.0 / (currentPlayer.planeX * currentPlayer.dirY - currentPlayer.dirX * currentPlayer.planeY);
+
+            double transformX = invDet * (currentPlayer.dirY * spriteX - currentPlayer.dirX * spriteY);
+            double transformY = invDet * (-currentPlayer.planeY * spriteX + currentPlayer.planeX * spriteY);
+
+            int spriteScreenX = int((SCREEN_WIDTH / 2) * (1 + transformX / transformY));
+
+            // Calculate sprite dimensions
+            int spriteHeight = abs(int(SCREEN_HEIGHT / transformY));
+            int spriteWidth = spriteHeight;
+
+            // Draw bullet as a red rectangle
+            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
             SDL_Rect bulletRect = {
-                static_cast<int>(bullet.posX * cellSize) - 2,
-                static_cast<int>(bullet.posY * cellSize) - 2,
+                spriteScreenX - 2,
+                SCREEN_HEIGHT / 2 - spriteHeight / 2 - 2,
                 4, 4};
             SDL_RenderFillRect(renderer, &bulletRect);
         }
-
-        // Pass cellSize to renderMinimap()
-        renderMinimap(cellSize); // <-- Pass the value here
-
-        SDL_RenderPresent(renderer);
     }
 
     void handleBulletUpdates(const BulletPacket &bulletPacket)
