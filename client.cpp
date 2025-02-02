@@ -19,14 +19,14 @@ const int SERVER_PORT = 1234;
 
 // Define the map (1 represents walls, 0 represents empty space)
 const int worldMap[MAP_WIDTH][MAP_HEIGHT] = {
-    {1,1,1,1,1,1,1,1},
-    {1,0,0,0,0,0,0,1},
-    {1,0,1,0,0,1,0,1},
-    {1,0,0,0,0,0,0,1},
-    {1,0,1,0,0,1,0,1},
-    {1,0,1,0,0,1,0,1},
-    {1,0,0,0,0,0,0,1},
-    {1,1,1,1,1,1,1,1}
+    {4,4,4,4,4,4,4,4},
+    {4,0,0,0,0,0,0,4},
+    {4,0,2,0,0,2,0,4},
+    {4,0,0,0,0,0,0,1},
+    {4,0,2,0,0,2,0,4},
+    {4,0,2,0,0,2,0,4},
+    {4,0,0,0,0,0,0,4},
+    {4,3,3,1,1,3,3,4}
 };
 
 class GameClient {
@@ -38,6 +38,12 @@ private:
     std::vector<PlayerState> players;
     size_t playerID;
     bool isRunning;
+    SDL_Texture* playerTexture;
+    
+    static const int NUM_TEXTURES = 4;
+    SDL_Texture* wallTextures[NUM_TEXTURES];
+    static const int TEX_WIDTH = 64;
+    static const int TEX_HEIGHT = 64;
     // SDL_Texture* playerTexture;
     SpriteSheet playerSprite;
 
@@ -194,15 +200,38 @@ private:
             int drawEnd = lineHeight / 2 + SCREEN_HEIGHT / 2;
             if (drawEnd >= SCREEN_HEIGHT) drawEnd = SCREEN_HEIGHT - 1;
 
-            // Choose wall color
-            SDL_SetRenderDrawColor(renderer, 
-                side == 1 ? 155 : 255,  // Red
-                side == 1 ? 155 : 255,  // Green
-                side == 1 ? 155 : 255,  // Blue
-                255);                   // Alpha
+            // Calculate texture coordinates
+            double wallX;
+            if (side == 0) {
+                wallX = currentPlayer.posY + perpWallDist * rayDirY;
+            } else {
+                wallX = currentPlayer.posX + perpWallDist * rayDirX;
+            }
+            wallX -= floor(wallX);
 
-            // Draw the vertical line
-            SDL_RenderDrawLine(renderer, x, drawStart, x, drawEnd);
+            // x coordinate on the texture
+            int texX = int(wallX * TEX_WIDTH);
+            if(side == 0 && rayDirX > 0) texX = TEX_WIDTH - texX - 1;
+            if(side == 1 && rayDirY < 0) texX = TEX_WIDTH - texX - 1;
+
+            // Choose texture based on wall type (1-4)
+            int texNum = worldMap[mapX][mapY] - 1;
+            // Manual clamp implementation
+            texNum = (texNum < 0) ? 0 : ((texNum > NUM_TEXTURES - 1) ? NUM_TEXTURES - 1 : texNum);
+
+            // Calculate texture scaling
+            double step = 1.0 * TEX_HEIGHT / lineHeight;
+            double texPos = (drawStart - SCREEN_HEIGHT / 2 + lineHeight / 2) * step;
+
+            // Draw the textured vertical line pixel by pixel
+            for(int y = drawStart; y < drawEnd; y++) {
+                int texY = (int)texPos & (TEX_HEIGHT - 1);
+                texPos += step;
+                
+                SDL_Rect srcRect = {texX, texY, 1, 1};
+                SDL_Rect destRect = {x, y, 1, 1};
+                SDL_RenderCopy(renderer, wallTextures[texNum], &srcRect, &destRect);
+            }
         }
 
         // Sort sprites by distance (furthest first)
@@ -365,6 +394,38 @@ public:
         playerID = 0;  // Will be set properly when connecting to server
         isRunning = true;
 
+        // Load wall textures
+        const char* textureFiles[NUM_TEXTURES] = {
+            "wall1.png",
+            "wall2.png",
+            "wall3.png",
+            "wall4.png"
+        };
+
+        for(int i = 0; i < NUM_TEXTURES; i++) {
+            SDL_Surface* tempSurface = IMG_Load(textureFiles[i]);
+            if (!tempSurface) {
+                throw std::runtime_error("Failed to load wall texture: " + std::string(IMG_GetError()));
+            }
+            wallTextures[i] = SDL_CreateTextureFromSurface(renderer, tempSurface);
+            SDL_FreeSurface(tempSurface);
+            if (!wallTextures[i]) {
+                throw std::runtime_error("Failed to create wall texture: " + std::string(SDL_GetError()));
+            }
+        }
+
+        // Load player texture
+        SDL_Surface* tempSurface = IMG_Load("player_texture.png");
+        if (!tempSurface) {
+            throw std::runtime_error("Failed to load player texture: " + std::string(IMG_GetError()));
+        }
+        playerTexture = SDL_CreateTextureFromSurface(renderer, tempSurface);
+        if (!playerTexture) {
+            std::cerr << "Failed to create player texture: " << SDL_GetError() << std::endl;
+            return;
+        } else {
+            std::cout << "Player texture loaded successfully!" << std::endl;
+        }
 
         // // Load player texture
         // SDL_Surface* tempSurface = IMG_Load("player_texture.png");
@@ -436,6 +497,10 @@ public:
     }
 
     ~GameClient() {
+        SDL_DestroyTexture(playerTexture);
+        for(int i = 0; i < NUM_TEXTURES; i++) {
+            SDL_DestroyTexture(wallTextures[i]);
+        }
         // SDL_DestroyTexture(playerTexture);
         // playerSprite.free();
 
