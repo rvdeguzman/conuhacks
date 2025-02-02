@@ -761,6 +761,8 @@ public:
       throw std::runtime_error("Failed to initialize ENet");
     }
 
+    SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "1");
+
     ENetAddress address;
     enet_address_set_host(&address, SERVER_HOST);
     address.port = SERVER_PORT;
